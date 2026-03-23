@@ -1,0 +1,22 @@
+{
+  "name": "memberbase-ecosystem",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "dev:core": "turbo run dev --filter=@memberbase/core",
+    "dev:gymbase": "turbo run dev --filter=@memberbase/gymbase",
+    "build:core": "turbo run build --filter=@memberbase/core",
+    "build:gymbase": "turbo run build --filter=@memberbase/gymbase"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.4"
+  },
+  "packageManager": "pnpm@10.32.1",
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=10"
+  }
+}
