@@ -219,6 +219,20 @@
   textarea::placeholder {
     color: var(--gym-text-ghost);
   }
+
+  /* Fix: ícono del calendario/reloj visible en tema oscuro */
+  input[type="date"],
+  input[type="time"],
+  input[type="datetime-local"] {
+    color-scheme: dark;
+    color: var(--gym-text-primary);
+  }
+  input[type="date"]::-webkit-calendar-picker-indicator,
+  input[type="time"]::-webkit-calendar-picker-indicator,
+  input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+    filter: invert(1) brightness(0.75);
+    cursor: pointer;
+  }
 }
 
 /* ─── Utilidades semánticas GymBase ─────────────────────────────────────────── */

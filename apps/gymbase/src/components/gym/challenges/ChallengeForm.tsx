@@ -1,4 +1,4 @@
-// ChallengeForm.tsx — Formulario admin para crear un nuevo reto
+// ChallengeForm.tsx — Formulario admin para crear un nuevo reto con selector visual
 
 "use client";
 
@@ -9,53 +9,71 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
 import { Button } from "@core/components/ui/button";
 import { Input } from "@core/components/ui/input";
-import { Label } from "@core/components/ui/label";
 import { Textarea } from "@core/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@core/components/ui/select";
 import { Alert, AlertDescription } from "@core/components/ui/alert";
 import { createChallenge } from "@/actions/challenge.actions";
 import { createChallengeSchema, type CreateChallengeInput } from "@/lib/validations/challenges";
+import { cn } from "@core/lib/utils";
 
-// Descripción de cada tipo de reto para orientar al admin
-const CHALLENGE_TYPE_INFO: Record<string, { label: string; description: string; unit: string }> = {
-  attendance: {
-    label: "Asistencia",
-    description: "Mide cuántas veces asisten al gym en el periodo",
-    unit: "visitas",
+// Tipos de reto con descripción para las cards visuales
+const CHALLENGE_TYPES = [
+  {
+    value: "attendance",
+    icon: "🏃",
+    name: "Asistencia",
+    desc: "Meta en cantidad de visitas al gym. El QR cuenta automáticamente.",
+    unit: "asistencias",
   },
-  workout: {
-    label: "Entrenamiento",
-    description: "Mide la cantidad de sesiones de workout completadas",
+  {
+    value: "workout",
+    icon: "💪",
+    name: "Workout",
+    desc: "Meta en sesiones de rutina completadas en la app.",
     unit: "sesiones",
   },
-  weight: {
-    label: "Peso / fuerza",
-    description: "Mide progreso en levantamiento de peso (kg totales)",
+  {
+    value: "weight",
+    icon: "⚖️",
+    name: "Peso / Métrica",
+    desc: "Cambio en kg o % de grasa. Requiere medición al inicio y al final.",
     unit: "kg",
   },
-  custom: {
-    label: "Personalizado",
-    description: "Define tu propia métrica y unidad de medida",
+  {
+    value: "custom",
+    icon: "⚙️",
+    name: "Personalizado",
+    desc: "El participante registra su progreso manualmente con un número.",
     unit: "",
   },
-};
+];
+
+// Opciones de visibilidad del reto
+const VISIBILITY_OPTS = [
+  { value: "all",     icon: "🌐", label: "Todos",    desc: "Cualquier miembro activo" },
+  { value: "private", icon: "🔒", label: "Privado",  desc: "Solo admins" },
+];
 
 export function ChallengeForm(): React.ReactNode {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [selectedType, setSelectedType] = useState<string>("");
+  const [visibility, setVisibility] = useState<string>("all");
 
   const { register, handleSubmit, setValue, formState: { errors, isSubmitting } } = useForm<CreateChallengeInput>({
     resolver: zodResolver(createChallengeSchema),
     defaultValues: { is_public: true },
   });
 
-  function handleTypeChange(value: string): void {
+  function handleTypeSelect(value: string): void {
     setSelectedType(value);
     setValue("type", value as CreateChallengeInput["type"]);
-    // Pre-rellenar la unidad según el tipo seleccionado
-    const info = CHALLENGE_TYPE_INFO[value];
-    if (info?.unit) setValue("goal_unit", info.unit);
+    const typeInfo = CHALLENGE_TYPES.find(t => t.value === value);
+    if (typeInfo?.unit) setValue("goal_unit", typeInfo.unit);
+  }
+
+  function handleVisibilitySelect(value: string): void {
+    setVisibility(value);
+    setValue("is_public", value === "all");
   }
 
   async function onSubmit(data: CreateChallengeInput): Promise<void> {
@@ -72,99 +90,195 @@ export function ChallengeForm(): React.ReactNode {
     }
   }
 
+  const sectionClass = "text-[10px] font-semibold text-[#FF5E14] uppercase tracking-[0.1em] mb-3 mt-6 pb-2 border-b border-[#1a1a1a]";
+  const labelClass = "text-[10px] font-semibold text-[#666] uppercase tracking-[0.08em] mb-1.5 block";
+  const inputClass = "h-9 bg-[#161616] border-[#2a2a2a] text-sm focus-visible:ring-0 focus:border-[#FF5E14]";
+
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 max-w-lg">
+    <form onSubmit={handleSubmit(onSubmit)} className="max-w-2xl space-y-0">
       {error && (
-        <Alert variant="destructive">
+        <Alert variant="destructive" className="mb-4">
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
 
-      <div className="space-y-1.5">
-        <Label htmlFor="title">Título</Label>
-        <Input id="title" placeholder="Reto de asistencia de enero" {...register("title")} />
-        {errors.title && <p className="text-xs text-destructive">{errors.title.message}</p>}
+      {/* ── Información básica ── */}
+      <div className={sectionClass}>Información básica</div>
+
+      <div className="mb-4">
+        <label className={labelClass}>Título del reto <span className="text-[#FF5E14]">*</span></label>
+        <Input
+          placeholder="Ej: Reto Enero Activo"
+          className={inputClass}
+          {...register("title")}
+        />
+        {errors.title && <p className="text-xs text-destructive mt-1">{errors.title.message}</p>}
       </div>
 
-      <div className="space-y-1.5">
-        <Label htmlFor="description">Descripción</Label>
-        <Textarea id="description" rows={3} placeholder="Explica el objetivo del reto a los participantes…" {...register("description")} />
+      <div className="mb-4">
+        <label className={labelClass}>Descripción y reglas <span className="text-[#FF5E14]">*</span></label>
+        <Textarea
+          rows={3}
+          placeholder="Explicá las reglas y el objetivo del reto…"
+          className="bg-[#161616] border-[#2a2a2a] text-sm focus-visible:ring-0 focus:border-[#FF5E14] resize-none"
+          {...register("description")}
+        />
       </div>
 
-      {/* Selector de tipo con descripción contextual */}
-      <div className="space-y-1.5">
-        <Label>Tipo de reto</Label>
-        <Select onValueChange={handleTypeChange}>
-          <SelectTrigger>
-            <SelectValue placeholder="Seleccionar tipo…" />
-          </SelectTrigger>
-          <SelectContent>
-            {Object.entries(CHALLENGE_TYPE_INFO).map(([value, info]) => (
-              <SelectItem key={value} value={value}>{info.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {selectedType && (
-          <p className="text-xs text-muted-foreground">{CHALLENGE_TYPE_INFO[selectedType]?.description}</p>
-        )}
-        {errors.type && <p className="text-xs text-destructive">{errors.type.message}</p>}
+      {/* ── Tipo de reto — cards visuales ── */}
+      <div className={sectionClass}>Tipo de reto <span className="text-[#FF5E14]">*</span></div>
+      <div className="grid grid-cols-2 gap-2 mb-4">
+        {CHALLENGE_TYPES.map((t) => (
+          <div
+            key={t.value}
+            onClick={() => handleTypeSelect(t.value)}
+            className={cn(
+              "p-3 rounded-xl bg-[#161616] border cursor-pointer transition-all",
+              selectedType === t.value
+                ? "border-[#FF5E14] bg-[rgba(255,94,20,0.06)]"
+                : "border-[#2a2a2a] hover:border-[#333]"
+            )}
+          >
+            <div className="text-xl mb-1.5">{t.icon}</div>
+            <div className={cn("text-sm font-semibold mb-0.5", selectedType === t.value ? "text-white" : "text-[#ccc]")}>
+              {t.name}
+            </div>
+            <div className="text-[10px] text-[#555] leading-tight">{t.desc}</div>
+          </div>
+        ))}
       </div>
+      {errors.type && <p className="text-xs text-destructive -mt-2 mb-3">{errors.type.message}</p>}
+      <input type="hidden" {...register("type")} />
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-1.5">
-          <Label htmlFor="goal_value">Meta</Label>
-          <Input id="goal_value" type="number" step="any" min={0} {...register("goal_value", { valueAsNumber: true })} />
-          {errors.goal_value && <p className="text-xs text-destructive">{errors.goal_value.message}</p>}
+      {/* ── Meta y progreso ── */}
+      <div className={sectionClass}>Meta y progreso</div>
+      <div className="grid grid-cols-2 gap-3 mb-4">
+        <div>
+          <label className={labelClass}>Meta numérica <span className="text-[#FF5E14]">*</span></label>
+          <Input
+            type="number"
+            step="any"
+            min={0}
+            className={inputClass}
+            {...register("goal_value", { valueAsNumber: true })}
+          />
+          {errors.goal_value && <p className="text-xs text-destructive mt-1">{errors.goal_value.message}</p>}
         </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="goal_unit">Unidad</Label>
-          <Input id="goal_unit" placeholder="visitas, kg, sesiones…" {...register("goal_unit")} />
-          {errors.goal_unit && <p className="text-xs text-destructive">{errors.goal_unit.message}</p>}
+        <div>
+          <label className={labelClass}>Unidad <span className="text-[#FF5E14]">*</span></label>
+          <Input
+            placeholder="visitas, kg, sesiones…"
+            className={inputClass}
+            {...register("goal_unit")}
+          />
+          {errors.goal_unit && <p className="text-xs text-destructive mt-1">{errors.goal_unit.message}</p>}
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-1.5">
-          <Label htmlFor="starts_at">Inicio</Label>
-          <Input id="starts_at" type="datetime-local" {...register("starts_at")} />
-          {errors.starts_at && <p className="text-xs text-destructive">{errors.starts_at.message}</p>}
+      {/* ── Duración ── */}
+      <div className={sectionClass}>Duración</div>
+      <div className="grid grid-cols-2 gap-3 mb-4">
+        <div>
+          <label className={labelClass}>Fecha de inicio <span className="text-[#FF5E14]">*</span></label>
+          <input
+            type="date"
+            className="w-full h-9 bg-[#161616] border border-[#2a2a2a] rounded-md px-3 text-sm text-white focus:border-[#FF5E14] focus:outline-none"
+            onChange={(e) => setValue("starts_at", e.target.value ? `${e.target.value}T00:00` : "")}
+          />
+          {errors.starts_at && <p className="text-xs text-destructive mt-1">{errors.starts_at.message}</p>}
+          <input type="hidden" {...register("starts_at")} />
         </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="ends_at">Fin</Label>
-          <Input id="ends_at" type="datetime-local" {...register("ends_at")} />
-          {errors.ends_at && <p className="text-xs text-destructive">{errors.ends_at.message}</p>}
+        <div>
+          <label className={labelClass}>Fecha de cierre <span className="text-[#FF5E14]">*</span></label>
+          <input
+            type="date"
+            className="w-full h-9 bg-[#161616] border border-[#2a2a2a] rounded-md px-3 text-sm text-white focus:border-[#FF5E14] focus:outline-none"
+            onChange={(e) => setValue("ends_at", e.target.value ? `${e.target.value}T23:59` : "")}
+          />
+          {errors.ends_at && <p className="text-xs text-destructive mt-1">{errors.ends_at.message}</p>}
+          <input type="hidden" {...register("ends_at")} />
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-1.5">
-          <Label htmlFor="max_participants">Máx. participantes (opcional)</Label>
-          <Input id="max_participants" type="number" min={2} max={1000} placeholder="Sin límite" {...register("max_participants", { valueAsNumber: true })} />
+      {/* ── Participantes y premio ── */}
+      <div className={sectionClass}>Participantes y premio</div>
+      <div className="grid grid-cols-2 gap-3 mb-4">
+        <div>
+          <label className={labelClass}>Límite de participantes</label>
+          <Input
+            type="number"
+            min={2}
+            max={1000}
+            placeholder="Vacío = sin límite"
+            className={inputClass}
+            {...register("max_participants", { valueAsNumber: true })}
+          />
         </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="prize_description">Premio (opcional)</Label>
-          <Input id="prize_description" placeholder="Mes gratis, camiseta…" {...register("prize_description")} />
+        <div>
+          <label className={labelClass}>Premio / reconocimiento</label>
+          <Input
+            placeholder="Ej: Mes gratis, camiseta…"
+            className={inputClass}
+            {...register("prize_description")}
+          />
         </div>
       </div>
 
-      <div className="space-y-1.5">
-        <Label htmlFor="banner_url">URL de imagen banner (opcional)</Label>
-        <Input id="banner_url" type="url" placeholder="https://…" {...register("banner_url")} />
-        {errors.banner_url && <p className="text-xs text-destructive">{errors.banner_url.message}</p>}
-        <p className="text-xs text-muted-foreground">Imagen que se mostrará en la tarjeta del reto</p>
+      {/* Banner upload placeholder */}
+      <div className="mb-4">
+        <label className={labelClass}>URL de banner (opcional)</label>
+        <Input
+          type="url"
+          placeholder="https://…"
+          className={inputClass}
+          {...register("banner_url")}
+        />
+        {errors.banner_url && <p className="text-xs text-destructive mt-1">{errors.banner_url.message}</p>}
+        <p className="text-[10px] text-[#444] mt-1">Imagen que se mostrará en la card del reto</p>
       </div>
 
-      <div className="flex items-center gap-2">
-        <input type="checkbox" id="is_public" {...register("is_public")} className="w-4 h-4 accent-primary rounded border-border" />
-        <Label htmlFor="is_public">Visible para todos los miembros</Label>
+      {/* ── Visibilidad ── */}
+      <div className={sectionClass}>Visibilidad</div>
+      <div className="grid grid-cols-2 gap-2 mb-6">
+        {VISIBILITY_OPTS.map((opt) => (
+          <div
+            key={opt.value}
+            onClick={() => handleVisibilitySelect(opt.value)}
+            className={cn(
+              "p-3 rounded-xl bg-[#161616] border cursor-pointer transition-all",
+              visibility === opt.value
+                ? "border-[#FF5E14] bg-[rgba(255,94,20,0.06)]"
+                : "border-[#2a2a2a] hover:border-[#333]"
+            )}
+          >
+            <div className="text-xl mb-1.5">{opt.icon}</div>
+            <div className={cn("text-sm font-semibold mb-0.5", visibility === opt.value ? "text-white" : "text-[#ccc]")}>
+              {opt.label}
+            </div>
+            <div className="text-[10px] text-[#555]">{opt.desc}</div>
+          </div>
+        ))}
       </div>
+      <input type="hidden" {...register("is_public")} />
 
-      <div className="flex gap-2 pt-2">
-        <Button type="submit" disabled={isSubmitting} className="gap-2">
+      {/* Botones */}
+      <div className="flex gap-2 pt-2 border-t border-[#1a1a1a]">
+        <Button
+          type="submit"
+          disabled={isSubmitting}
+          className="gap-2 bg-[#FF5E14] hover:bg-[#e5540f] text-white"
+        >
           {isSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
           Crear reto
         </Button>
-        <Button type="button" variant="outline" onClick={() => router.back()}>Cancelar</Button>
+        <Button
+          type="button"
+          variant="outline"
+          className="border-[#2a2a2a] text-[#666] hover:text-white"
+          onClick={() => router.back()}
+        >
+          Cancelar
+        </Button>
       </div>
     </form>
   );
