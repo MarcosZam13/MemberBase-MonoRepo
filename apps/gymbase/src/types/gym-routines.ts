@@ -15,6 +15,8 @@ export interface Exercise {
   is_timed: boolean;
   duration_seconds: number | null;
   is_global: boolean;
+  // parent_exercise_id permite modelar variantes del mismo ejercicio base
+  parent_exercise_id: string | null;
   created_at: string;
 }
 

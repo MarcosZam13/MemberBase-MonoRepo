@@ -91,15 +91,16 @@ export function RoutineList({ routines }: RoutineListProps): React.ReactNode {
               <span className="text-xs text-muted-foreground group-hover:text-primary transition-colors">
                 Abrir editor →
               </span>
-              <div className="flex items-center gap-0.5" onClick={(e) => e.preventDefault()}>
-                <Link
-                  href={`/admin/routines/${routine.id}/edit`}
+              {/* e.preventDefault() evita que el click en botones internos navegue al href del Link padre */}
+            <div className="flex items-center gap-0.5" onClick={(e) => e.preventDefault()}>
+                <button
+                  type="button"
                   className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
                   title="Editar nombre"
-                  onClick={(e) => e.stopPropagation()}
+                  onClick={(e) => { e.stopPropagation(); router.push(`/admin/routines/${routine.id}/edit`); }}
                 >
                   <Pencil className="w-3.5 h-3.5" />
-                </Link>
+                </button>
                 <button
                   onClick={(e) => handleDelete(routine.id, e)}
                   disabled={deletingId === routine.id}

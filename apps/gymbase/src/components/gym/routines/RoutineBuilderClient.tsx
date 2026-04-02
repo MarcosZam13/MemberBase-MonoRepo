@@ -5,8 +5,9 @@
 import { useState, useDeferredValue, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Search, Dumbbell, X, Loader2, Timer, Repeat } from "lucide-react";
+import { Search, Dumbbell, X, Loader2, Timer, ChevronDown, Plus } from "lucide-react";
 import { addExercise, removeExerciseAction, addDay, updateExerciseParams } from "@/actions/routine.actions";
+import { createExercise } from "@/actions/exercise.actions";
 import type { RoutineWithDays, Exercise } from "@/types/gym-routines";
 
 const MUSCLE_GROUPS = ["Todos", "Pecho", "Espalda", "Hombros", "Bíceps", "Tríceps", "Piernas", "Core", "Cardio"];
@@ -39,19 +40,47 @@ export function RoutineBuilderClient({ routine, exercises }: RoutineBuilderClien
   const [addingExercise, setAddingExercise] = useState<string | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [addingDay, setAddingDay] = useState(false);
+  // Estado para la expansión de variantes por ejercicio padre
+  const [expandedExercises, setExpandedExercises] = useState<Set<string>>(new Set());
+  // Estado para el formulario rápido de nueva variante
+  const [addingVariantTo, setAddingVariantTo] = useState<string | null>(null);
+  const [variantName, setVariantName] = useState("");
+  const [savingVariant, setSavingVariant] = useState(false);
 
   const deferredSearch = useDeferredValue(searchQuery);
   const currentDay = sortedDays.find((d) => d.id === activeDay);
 
-  // Filtrar ejercicios de la biblioteca por músculo y texto
-  const filteredExercises = exercises.filter((ex) => {
+  // Mapa de variantes: ejercicio padre → lista de variantes hijas
+  const variantsMap = useMemo(() => {
+    const map: Record<string, Exercise[]> = {};
+    for (const ex of exercises) {
+      if (ex.parent_exercise_id) {
+        if (!map[ex.parent_exercise_id]) map[ex.parent_exercise_id] = [];
+        map[ex.parent_exercise_id].push(ex);
+      }
+    }
+    return map;
+  }, [exercises]);
+
+  // Solo mostrar ejercicios base en la lista principal (sin padre)
+  const baseExercises = useMemo(
+    () => exercises.filter((ex) => !ex.parent_exercise_id),
+    [exercises]
+  );
+
+  // Filtrar ejercicios base por músculo y texto (incluyendo coincidencias en variantes)
+  const filteredExercises = baseExercises.filter((ex) => {
     const matchesMuscle =
       muscleFilter === "Todos" ||
       ex.muscle_group?.toLowerCase().includes(muscleFilter.toLowerCase());
     const matchesSearch =
       !deferredSearch ||
       ex.name.toLowerCase().includes(deferredSearch.toLowerCase()) ||
-      ex.muscle_group?.toLowerCase().includes(deferredSearch.toLowerCase());
+      ex.muscle_group?.toLowerCase().includes(deferredSearch.toLowerCase()) ||
+      // Incluir si alguna variante coincide con la búsqueda
+      (variantsMap[ex.id] ?? []).some((v) =>
+        v.name.toLowerCase().includes(deferredSearch.toLowerCase())
+      );
     return matchesMuscle && matchesSearch;
   });
 
@@ -115,6 +144,44 @@ export function RoutineBuilderClient({ routine, exercises }: RoutineBuilderClien
     }
   }
 
+  function toggleExpand(exerciseId: string): void {
+    setExpandedExercises((prev) => {
+      const next = new Set(prev);
+      if (next.has(exerciseId)) {
+        next.delete(exerciseId);
+        // Ocultar el form de agregar variante si se cierra el ejercicio
+        if (addingVariantTo === exerciseId) setAddingVariantTo(null);
+      } else {
+        next.add(exerciseId);
+      }
+      return next;
+    });
+  }
+
+  // Crea una variante nueva vinculada al ejercicio padre y refresca la lista
+  async function handleSaveVariant(parentId: string, parentExercise: Exercise): Promise<void> {
+    const name = variantName.trim();
+    if (!name) return;
+    setSavingVariant(true);
+    const result = await createExercise({
+      name,
+      difficulty: parentExercise.difficulty,
+      muscle_group: parentExercise.muscle_group ?? undefined,
+      equipment: parentExercise.equipment ?? undefined,
+      is_timed: parentExercise.is_timed,
+      parent_exercise_id: parentId,
+    });
+    setSavingVariant(false);
+    if (result.success) {
+      setVariantName("");
+      setAddingVariantTo(null);
+      router.refresh();
+      toast.success("Variante agregada");
+    } else {
+      toast.error(typeof result.error === "string" ? result.error : "Error al crear variante");
+    }
+  }
+
   // Guarda sets/reps/descanso en blur para no llamar el server en cada keystroke
   async function handleParamBlur(
     routineExerciseId: string,
@@ -171,37 +238,125 @@ export function RoutineBuilderClient({ routine, exercises }: RoutineBuilderClien
           </div>
         </div>
 
-        {/* Lista — clic para agregar al día activo */}
+        {/* Lista — clic en fila para agregar al día activo; clic en badge para expandir variantes */}
         <div className="max-h-[480px] overflow-y-auto">
           {filteredExercises.length === 0 ? (
             <p className="text-xs text-muted-foreground text-center py-8">Sin ejercicios</p>
           ) : (
-            filteredExercises.map((ex) => (
-              <button
-                key={ex.id}
-                onClick={() => handleAddExercise(ex.id)}
-                disabled={addingExercise === ex.id || !activeDay}
-                className="w-full flex items-center gap-2.5 px-3 py-2.5 border-b border-border/50 hover:bg-muted/50 transition-colors text-left disabled:opacity-50 cursor-pointer disabled:cursor-default group"
-              >
-                <div className="w-8 h-8 rounded-lg bg-muted border border-border flex items-center justify-center flex-shrink-0">
-                  {addingExercise === ex.id ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
-                  ) : (
-                    <Dumbbell className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary transition-colors" />
+            filteredExercises.map((ex) => {
+              const variants = variantsMap[ex.id] ?? [];
+              const hasVariants = variants.length > 0;
+              const isExpanded = expandedExercises.has(ex.id);
+
+              return (
+                <div key={ex.id} className="border-b border-border/50">
+                  {/* Fila principal del ejercicio */}
+                  <div className="flex items-center">
+                    <button
+                      onClick={() => handleAddExercise(ex.id)}
+                      disabled={addingExercise === ex.id || !activeDay}
+                      className="flex-1 flex items-center gap-2.5 px-3 py-2.5 hover:bg-muted/50 transition-colors text-left disabled:opacity-50 cursor-pointer disabled:cursor-default group"
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-muted border border-border flex items-center justify-center flex-shrink-0">
+                        {addingExercise === ex.id ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
+                        ) : (
+                          <Dumbbell className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary transition-colors" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium text-foreground truncate">{ex.name}</p>
+                        <p className="text-[10px] text-muted-foreground flex items-center gap-1">
+                          {ex.muscle_group ? (MUSCLE_LABELS[ex.muscle_group] ?? ex.muscle_group) : "General"}
+                          {ex.is_timed && <Timer className="w-2.5 h-2.5 ml-0.5" />}
+                        </p>
+                      </div>
+                      <div
+                        className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${DIFFICULTY_DOT[ex.difficulty] ?? "bg-muted-foreground"}`}
+                      />
+                    </button>
+
+                    {/* Badge de variantes + toggle de expansión */}
+                    <button
+                      onClick={() => toggleExpand(ex.id)}
+                      className="flex items-center gap-1 px-2 py-2.5 text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
+                      title={hasVariants ? `${variants.length} variante${variants.length !== 1 ? "s" : ""}` : "Agregar variantes"}
+                    >
+                      {hasVariants && (
+                        <span className="bg-primary/10 text-primary text-[9px] font-bold px-1.5 py-0.5 rounded-full leading-none">
+                          {variants.length}
+                        </span>
+                      )}
+                      <ChevronDown
+                        className={`w-3 h-3 transition-transform duration-150 ${isExpanded ? "rotate-180" : ""}`}
+                      />
+                    </button>
+                  </div>
+
+                  {/* Panel expandible: variantes + formulario de nueva variante */}
+                  {isExpanded && (
+                    <div className="bg-muted/10 border-t border-border/30 pb-1">
+                      {variants.map((v) => (
+                        <button
+                          key={v.id}
+                          onClick={() => handleAddExercise(v.id)}
+                          disabled={addingExercise === v.id || !activeDay}
+                          className="w-full flex items-center gap-2 px-4 py-2 hover:bg-muted/40 transition-colors text-left disabled:opacity-50 cursor-pointer disabled:cursor-default group"
+                        >
+                          {addingExercise === v.id ? (
+                            <Loader2 className="w-3 h-3 animate-spin text-muted-foreground flex-shrink-0" />
+                          ) : (
+                            <div className="w-1 h-1 rounded-full bg-muted-foreground flex-shrink-0 mt-0.5" />
+                          )}
+                          <p className="text-xs text-muted-foreground group-hover:text-foreground transition-colors truncate">
+                            {v.name}
+                          </p>
+                        </button>
+                      ))}
+
+                      {/* Formulario rápido para nueva variante */}
+                      {addingVariantTo === ex.id ? (
+                        <div className="flex items-center gap-1.5 px-4 py-2">
+                          <input
+                            autoFocus
+                            type="text"
+                            value={variantName}
+                            onChange={(e) => setVariantName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") handleSaveVariant(ex.id, ex);
+                              if (e.key === "Escape") { setAddingVariantTo(null); setVariantName(""); }
+                            }}
+                            placeholder="Nombre de la variante…"
+                            className="flex-1 h-6 bg-background border border-border rounded px-2 text-[11px] text-foreground placeholder:text-muted-foreground outline-none focus:border-primary transition-colors"
+                          />
+                          <button
+                            onClick={() => handleSaveVariant(ex.id, ex)}
+                            disabled={savingVariant || !variantName.trim()}
+                            className="h-6 px-2 bg-primary/10 border border-primary/30 text-primary text-[10px] font-medium rounded hover:bg-primary/20 transition-colors disabled:opacity-40"
+                          >
+                            {savingVariant ? <Loader2 className="w-3 h-3 animate-spin" /> : "OK"}
+                          </button>
+                          <button
+                            onClick={() => { setAddingVariantTo(null); setVariantName(""); }}
+                            className="h-6 px-2 text-muted-foreground hover:text-foreground text-[10px] rounded transition-colors"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => { setAddingVariantTo(ex.id); setVariantName(""); }}
+                          className="w-full flex items-center gap-1.5 px-4 py-1.5 text-[11px] text-primary hover:text-primary/80 transition-colors text-left"
+                        >
+                          <Plus className="w-3 h-3" />
+                          Agregar variante
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium text-foreground truncate">{ex.name}</p>
-                  <p className="text-[10px] text-muted-foreground flex items-center gap-1">
-                    {ex.muscle_group ? (MUSCLE_LABELS[ex.muscle_group] ?? ex.muscle_group) : "General"}
-                    {ex.is_timed && <Timer className="w-2.5 h-2.5 ml-0.5" />}
-                  </p>
-                </div>
-                <div
-                  className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${DIFFICULTY_DOT[ex.difficulty] ?? "bg-muted-foreground"}`}
-                />
-              </button>
-            ))
+              );
+            })
           )}
         </div>
       </div>

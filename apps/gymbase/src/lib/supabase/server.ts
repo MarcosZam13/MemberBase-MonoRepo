@@ -1,7 +1,22 @@
 // server.ts — Cliente de Supabase para Server Components y Server Actions
-// Re-exporta de core + agrega helper para obtener el org_id del gym
+// Re-exporta de core + agrega helpers para org_id y cliente de admin con service role
 
 export { createClient, getCurrentUser } from "@core/lib/supabase/server";
+
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+
+// Cliente con service_role_key para operaciones admin (auth.admin.*)
+// Solo usar en Server Actions con verificación de rol previa — nunca exponer al cliente
+export function createAdminClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !serviceRoleKey) {
+    throw new Error("SUPABASE_SERVICE_ROLE_KEY no está configurado. Agrégalo al archivo .env.local");
+  }
+  return createSupabaseClient(url, serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+}
 
 import { createClient as _createClient } from "@core/lib/supabase/server";
 

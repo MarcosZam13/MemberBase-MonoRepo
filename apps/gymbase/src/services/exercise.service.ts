@@ -4,8 +4,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Exercise } from "@/types/gym-routines";
 
 // Columnas que se seleccionan en todas las queries de ejercicios
+// parent_exercise_id permite identificar variantes (agrupadas bajo el ejercicio base)
 const EXERCISE_COLUMNS =
-  "id, org_id, name, description, video_url, thumbnail_url, muscle_group, equipment, difficulty, is_timed, duration_seconds, is_global, created_at";
+  "id, org_id, name, description, video_url, thumbnail_url, muscle_group, equipment, difficulty, is_timed, duration_seconds, is_global, parent_exercise_id, created_at";
 
 interface ExerciseFilters {
   muscle_group?: string;
@@ -50,6 +51,7 @@ export async function insertExercise(
     difficulty: string;
     is_timed?: boolean;
     duration_seconds?: number | null;
+    parent_exercise_id?: string | null;
   }
 ): Promise<Exercise> {
   const { data: exercise, error } = await supabase
@@ -64,6 +66,7 @@ export async function insertExercise(
       difficulty: data.difficulty,
       is_timed: data.is_timed ?? false,
       duration_seconds: data.is_timed ? (data.duration_seconds ?? null) : null,
+      parent_exercise_id: data.parent_exercise_id ?? null,
     })
     .select(EXERCISE_COLUMNS)
     .single();

@@ -7,7 +7,11 @@ import type { AdminDashboardStats, MemberWithSubscription } from "@/types/databa
 export async function fetchAdminStats(
   supabase: SupabaseClient
 ): Promise<AdminDashboardStats> {
+  const now = new Date();
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  // Inicio y fin del mes calendario actual para el cálculo de ingresos
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+  const startOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString();
 
   const [
     { count: activeMembers },
@@ -18,7 +22,7 @@ export async function fetchAdminStats(
   ] = await Promise.all([
     supabase.from("subscriptions").select("*", { count: "exact", head: true }).eq("status", "active"),
     supabase.from("payment_proofs").select("*", { count: "exact", head: true }).eq("status", "pending"),
-    supabase.from("payment_proofs").select("amount").eq("status", "approved").gte("reviewed_at", thirtyDaysAgo),
+    supabase.from("payment_proofs").select("amount").eq("status", "approved").gte("created_at", startOfMonth).lt("created_at", startOfNextMonth),
     supabase.from("content").select("*", { count: "exact", head: true }).eq("is_published", true),
     supabase.from("profiles").select("*", { count: "exact", head: true }).eq("role", "member").gte("created_at", thirtyDaysAgo),
   ]);

@@ -148,6 +148,73 @@ export async function removeExerciseAction(routineExerciseId: string): Promise<A
   }
 }
 
+// Asigna una rutina a todos los miembros activos de los planes seleccionados (batch)
+export async function assignRoutineByPlans(
+  routineId: string,
+  planIds: string[]
+): Promise<ActionResult<{ assigned: number }>> {
+  const user = await getCurrentUser();
+  if (!user || !["admin", "trainer"].includes(user.role)) return { success: false, error: "Sin permisos" };
+
+  const supabase = await createClient();
+  try {
+    const orgId = await getOrgId();
+
+    // Obtener todos los miembros activos de los planes seleccionados.
+    // No se filtra por org_id porque las suscripciones pueden tener org_id NULL en registros previos;
+    // el filtro por plan_id ya acota al gym correcto ya que los planes son por org.
+    const { data: subs, error: subsError } = await supabase
+      .from("subscriptions")
+      .select("user_id")
+      .eq("status", "active")
+      .in("plan_id", planIds);
+
+    if (subsError) throw new Error(subsError.message);
+    if (!subs || subs.length === 0) return { success: true, data: { assigned: 0 } };
+
+    // Desactivar rutinas anteriores de estos usuarios para esta org
+    const userIds = [...new Set(subs.map((s) => s.user_id))];
+    await supabase
+      .from("gym_member_routines")
+      .update({ is_active: false })
+      .eq("org_id", orgId)
+      .in("user_id", userIds);
+
+    // Insertar nuevas asignaciones (upsert por user_id + routine_id)
+    const rows = userIds.map((userId) => ({
+      user_id: userId,
+      org_id: orgId,
+      routine_id: routineId,
+      assigned_by: user.id,
+      starts_at: new Date().toISOString(),
+      is_active: true,
+    }));
+
+    const { error: insertError } = await supabase.from("gym_member_routines").insert(rows);
+    if (insertError) throw new Error(insertError.message);
+
+    revalidatePath(`/admin/routines/${routineId}`);
+    revalidatePath("/portal/routines");
+    return { success: true, data: { assigned: rows.length } };
+  } catch (error) {
+    console.error("[assignRoutineByPlans] Error:", error);
+    return { success: false, error: "Error al asignar la rutina" };
+  }
+}
+
+// Obtiene la rutina activa de un miembro específico (para uso admin)
+export async function getMemberActiveRoutine(memberId: string): Promise<MemberRoutine | null> {
+  const user = await getCurrentUser();
+  if (!user || user.role !== "admin") return null;
+  const supabase = await createClient();
+  try {
+    return await fetchMemberRoutine(supabase, memberId);
+  } catch (error) {
+    console.error("[getMemberActiveRoutine] Error:", error);
+    return null;
+  }
+}
+
 export async function getMyRoutine(): Promise<MemberRoutine | null> {
   const user = await getCurrentUser();
   if (!user) return null;

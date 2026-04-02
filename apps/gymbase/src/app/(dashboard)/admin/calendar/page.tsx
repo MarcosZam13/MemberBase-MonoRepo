@@ -7,12 +7,20 @@ import { ClassTypeForm } from "@/components/gym/calendar/ClassTypeForm";
 import { WeekView } from "@/components/gym/calendar/WeekView";
 import { AdminCalendarHeader } from "@/components/gym/calendar/AdminCalendarHeader";
 
-export default async function AdminCalendarPage(): Promise<React.ReactNode> {
-  // Calcular lunes y domingo de la semana actual
+export default async function AdminCalendarPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ w?: string }>;
+}): Promise<React.ReactNode> {
+  // Leer el offset de semana desde la URL (?w=0 es la semana actual)
+  const params = await searchParams;
+  const weekOffset = parseInt(params.w ?? "0", 10) || 0;
+
+  // Calcular lunes de la semana actual + offset
   const now = new Date();
   const dayOfWeek = now.getDay();
   const monday = new Date(now);
-  monday.setDate(now.getDate() - ((dayOfWeek + 6) % 7));
+  monday.setDate(now.getDate() - ((dayOfWeek + 6) % 7) + weekOffset * 7);
   monday.setHours(0, 0, 0, 0);
   const sunday = new Date(monday);
   sunday.setDate(monday.getDate() + 6);
@@ -35,11 +43,10 @@ export default async function AdminCalendarPage(): Promise<React.ReactNode> {
 
   return (
     <div className="space-y-0">
-      {/* Encabezado con semana y botón nueva clase */}
+      {/* Encabezado con semana y navegación */}
       <AdminCalendarHeader
         weekLabel={weekLabel}
-        classTypes={classTypes}
-        instructors={instructors}
+        weekOffset={weekOffset}
       />
 
       {/* Layout: sidebar izquierdo + grid semanal */}
@@ -107,7 +114,7 @@ export default async function AdminCalendarPage(): Promise<React.ReactNode> {
         <WeekView
           classes={weekClasses}
           myBookings={[]}
-          weekStart={monday}
+          weekStart={monday.toISOString()}
         />
       </div>
 

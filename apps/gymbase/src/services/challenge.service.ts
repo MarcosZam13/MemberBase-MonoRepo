@@ -61,7 +61,11 @@ export async function fetchParticipantCount(supabase: SupabaseClient, challengeI
     .select("id", { count: "exact", head: true })
     .eq("challenge_id", challengeId)
     .neq("status", "withdrawn");
-  if (error) throw new Error(error.message);
+  // Retorna 0 silenciosamente si la tabla no existe aún o hay error de RLS
+  if (error) {
+    console.error("[fetchParticipantCount] Error:", error.message);
+    return 0;
+  }
   return count ?? 0;
 }
 

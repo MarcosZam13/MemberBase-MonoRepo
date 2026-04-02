@@ -37,7 +37,7 @@ export async function fetchRoutineById(
         id, routine_id, day_number, name,
         exercises:gym_routine_exercises(
           id, day_id, exercise_id, sort_order, sets, reps, rest_seconds, notes,
-          exercise:gym_exercises(id, org_id, name, description, video_url, thumbnail_url, muscle_group, equipment, difficulty, is_global, created_at)
+          exercise:gym_exercises(id, org_id, name, description, video_url, thumbnail_url, muscle_group, equipment, difficulty, is_global, parent_exercise_id, created_at)
         )
       )
     `)

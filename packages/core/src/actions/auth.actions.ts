@@ -95,11 +95,23 @@ export async function signUp(formData: FormData): Promise<ActionResult> {
   });
 
   if (error) {
-    console.error("[signUp] Error al registrar:", error.message);
+    console.error("[signUp] Error al registrar:", error.message, error.code);
 
-    // Diferenciar error de email ya registrado sin exponer detalles internos
-    if (error.message.includes("already registered")) {
-      return { success: false, error: "Este correo ya está registrado" };
+    // Mapear los errores más comunes de Supabase a mensajes claros para el usuario
+    if (error.message.includes("already registered") || error.code === "user_already_exists") {
+      return { success: false, error: "Este correo ya está registrado. Inicia sesión o usa '¿Olvidaste tu contraseña?'." };
+    }
+    if (error.message.includes("Signup") && error.message.includes("disabled") || error.code === "signup_disabled") {
+      return { success: false, error: "El registro público no está habilitado. Contacta al administrador para recibir una invitación." };
+    }
+    if (error.message.includes("rate limit") || error.code === "over_email_send_rate_limit") {
+      return { success: false, error: "Demasiados intentos. Espera unos minutos antes de intentar de nuevo." };
+    }
+    if (error.message.includes("password") || error.code === "weak_password") {
+      return { success: false, error: "La contraseña es demasiado débil. Usa al menos 6 caracteres." };
+    }
+    if (error.message.includes("email") && error.message.includes("invalid")) {
+      return { success: false, error: "El formato del correo electrónico no es válido." };
     }
     return { success: false, error: "Error al crear la cuenta. Intenta de nuevo." };
   }

@@ -11,7 +11,8 @@ export const classTypeSchema = z.object({
 
 export const scheduleClassSchema = z.object({
   type_id: z.string().uuid("Tipo de clase inválido"),
-  title: z.string().min(2, "El título debe tener al menos 2 caracteres").max(100),
+  // Opcional — si se omite, el ClassBlock muestra el nombre del tipo de clase
+  title: z.string().min(2, "El título debe tener al menos 2 caracteres").max(100).optional().nullable(),
   starts_at: z.string().min(1, "La fecha de inicio es requerida"),
   ends_at: z.string().min(1, "La fecha de fin es requerida"),
   max_capacity: z.number().int().min(1).max(200).optional().nullable(),

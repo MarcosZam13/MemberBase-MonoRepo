@@ -15,6 +15,7 @@ import { scheduleClassSchema, type ScheduleClassInput } from "@/lib/validations/
 import type { ClassType } from "@/types/gym-calendar";
 import type { AdminProfile } from "@/actions/settings.actions";
 import { cn } from "@core/lib/utils";
+import { localToUtcISO } from "@/lib/time";
 
 // Duraciones predefinidas en minutos — las más comunes en gyms
 const DURATION_OPTIONS = [
@@ -51,6 +52,10 @@ export function ScheduleForm({ classTypes, instructors = [] }: ScheduleFormProps
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurrencePattern, setRecurrencePattern] = useState<string>("weekly");
   const [selectedDays, setSelectedDays] = useState<number[]>([]);
+  // selectedTypeId guarda el tipo seleccionado para mostrar preview con color y descripción
+  const [selectedTypeId, setSelectedTypeId] = useState<string | null>(null);
+  // selectedInstructorId necesario para mostrar el nombre del instructor en el trigger del Select
+  const [selectedInstructorId, setSelectedInstructorId] = useState<string | null>(null);
 
   const { register, handleSubmit, setValue, watch, reset, formState: { errors, isSubmitting } } = useForm<ScheduleClassInput>({
     resolver: zodResolver(scheduleClassSchema),
@@ -58,14 +63,14 @@ export function ScheduleForm({ classTypes, instructors = [] }: ScheduleFormProps
 
   const startsAt = watch("starts_at");
 
-  // Calcula ends_at sumando duración a starts_at
-  function applyDuration(minutes: number, start?: string): void {
-    const base = start ?? startsAt;
+  // Calcula ends_at sumando duración a starts_at (ambos en UTC ISO)
+  function applyDuration(minutes: number, startUTC?: string): void {
+    const base = startUTC ?? startsAt;
     if (!base) return;
-    const startDate = new Date(base);
+    const startDate = new Date(base); // base tiene Z → unambiguous UTC
     if (isNaN(startDate.getTime())) return;
     const endDate = new Date(startDate.getTime() + minutes * 60 * 1000);
-    setValue("ends_at", endDate.toISOString().slice(0, 16));
+    setValue("ends_at", endDate.toISOString());
   }
 
   function handleStartsAtChange(e: React.ChangeEvent<HTMLInputElement>): void {
@@ -73,7 +78,8 @@ export function ScheduleForm({ classTypes, instructors = [] }: ScheduleFormProps
     applyDuration(durationMinutes, e.target.value);
   }
 
-  function handleDurationChange(value: string): void {
+  function handleDurationChange(value: string | null): void {
+    if (!value) return;
     const minutes = parseInt(value, 10);
     setDurationMinutes(minutes);
     applyDuration(minutes);
@@ -119,11 +125,24 @@ export function ScheduleForm({ classTypes, instructors = [] }: ScheduleFormProps
       {/* Tipo de clase con dot de color */}
       <div className="mb-4">
         <label className={labelClass}>Tipo de clase <span className="text-[#FF5E14]">*</span></label>
-        <Select onValueChange={(v) => setValue("type_id", v)}>
+        {/*
+          Base UI desmonta los items del popup al cerrarlo, borrando su registro de texto.
+          SelectValue queda sin referencia y cae de vuelta al value raw (UUID).
+          Solución: mostrar el label manualmente desde el estado selectedTypeId.
+        */}
+        <Select onValueChange={(v: string | null) => { if (v) { setValue("type_id", v); setSelectedTypeId(v); } }}>
           <SelectTrigger className={inputClass}>
-            <SelectValue placeholder="Seleccionar tipo…" />
+            {selectedTypeId ? (() => {
+              const ct = classTypes.find((t) => t.id === selectedTypeId);
+              return (
+                <span className="flex items-center gap-2">
+                  <span className="inline-block w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: ct?.color ?? "#FF5E14" }} />
+                  <span>{ct?.name}</span>
+                </span>
+              );
+            })() : <span className="text-[#444]">Seleccionar tipo…</span>}
           </SelectTrigger>
-          <SelectContent position="popper" className="z-50">
+          <SelectContent>
             {classTypes.map((ct) => (
               <SelectItem key={ct.id} value={ct.id}>
                 <span className="flex items-center gap-2">
@@ -138,13 +157,27 @@ export function ScheduleForm({ classTypes, instructors = [] }: ScheduleFormProps
           </SelectContent>
         </Select>
         {errors.type_id && <p className="text-xs text-destructive mt-1">{errors.type_id.message}</p>}
+        {/* Preview del tipo seleccionado — muestra color, nombre y descripción */}
+        {selectedTypeId && (() => {
+          const ct = classTypes.find((t) => t.id === selectedTypeId);
+          if (!ct) return null;
+          return (
+            <div className="flex items-center gap-2.5 mt-2 px-3 py-2 bg-[#0d0d0d] border border-[#1e1e1e] rounded-lg">
+              <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: ct.color ?? "#FF5E14" }} />
+              <div>
+                <p className="text-[13px] font-semibold text-white leading-none">{ct.name}</p>
+                {ct.description && <p className="text-[11px] text-[#666] mt-0.5">{ct.description}</p>}
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
-      {/* Título personalizado */}
+      {/* Título personalizado — opcional, cae al nombre del tipo si se omite */}
       <div className="mb-4">
-        <label className={labelClass}>Título personalizado</label>
+        <label className={labelClass}>Título personalizado <span className="text-[#555] normal-case font-normal">(opcional)</span></label>
         <Input
-          placeholder="Vacío = usa el nombre del tipo"
+          placeholder="Ej: Pilates intensivo, Cardio matutino…"
           className={inputClass}
           {...register("title")}
         />
@@ -155,11 +188,14 @@ export function ScheduleForm({ classTypes, instructors = [] }: ScheduleFormProps
         {instructors.length > 0 && (
           <div>
             <label className={labelClass}>Instructor</label>
-            <Select onValueChange={(v) => setValue("instructor_id", v)}>
+            <Select onValueChange={(v: string | null) => { if (v) { setValue("instructor_id", v); setSelectedInstructorId(v); } }}>
               <SelectTrigger className={inputClass}>
-                <SelectValue placeholder="Seleccionar…" />
+                {selectedInstructorId ? (() => {
+                  const inst = instructors.find((i) => i.id === selectedInstructorId);
+                  return <span>{inst?.full_name ?? inst?.email}</span>;
+                })() : <span className="text-[#444]">Seleccionar…</span>}
               </SelectTrigger>
-              <SelectContent position="popper" className="z-50">
+              <SelectContent>
                 {instructors.map((inst) => (
                   <SelectItem key={inst.id} value={inst.id}>
                     {inst.full_name ?? inst.email}
@@ -189,14 +225,17 @@ export function ScheduleForm({ classTypes, instructors = [] }: ScheduleFormProps
           <input
             type="date"
             id="class_date"
+            // color-scheme: dark hace visibles los íconos nativos del picker en modo oscuro
+            style={{ colorScheme: "dark" }}
             className="w-full h-9 bg-[#161616] border border-[#2a2a2a] rounded-md px-3 text-sm text-white focus:border-[#FF5E14] focus:outline-none"
             onChange={(e) => {
               const timeInput = document.getElementById("class_time") as HTMLInputElement;
               const time = timeInput?.value ?? "09:00";
               if (e.target.value && time) {
-                const combined = `${e.target.value}T${time}`;
-                setValue("starts_at", combined);
-                applyDuration(durationMinutes, combined);
+                // Interpretar la hora ingresada como hora local del gym (America/Costa_Rica)
+                const utcIso = localToUtcISO(`${e.target.value}T${time}:00`);
+                setValue("starts_at", utcIso);
+                applyDuration(durationMinutes, utcIso);
               }
             }}
           />
@@ -206,15 +245,18 @@ export function ScheduleForm({ classTypes, instructors = [] }: ScheduleFormProps
           <input
             type="time"
             id="class_time"
+            // color-scheme: dark hace visibles los íconos nativos del picker en modo oscuro
+            style={{ colorScheme: "dark" }}
             className="w-full h-9 bg-[#161616] border border-[#2a2a2a] rounded-md px-3 text-sm text-white focus:border-[#FF5E14] focus:outline-none"
             defaultValue="09:00"
             onChange={(e) => {
               const dateInput = document.getElementById("class_date") as HTMLInputElement;
               const date = dateInput?.value;
               if (date && e.target.value) {
-                const combined = `${date}T${e.target.value}`;
-                setValue("starts_at", combined);
-                applyDuration(durationMinutes, combined);
+                // Interpretar la hora ingresada como hora local del gym (America/Costa_Rica)
+                const utcIso = localToUtcISO(`${date}T${e.target.value}:00`);
+                setValue("starts_at", utcIso);
+                applyDuration(durationMinutes, utcIso);
               }
             }}
           />
@@ -225,9 +267,10 @@ export function ScheduleForm({ classTypes, instructors = [] }: ScheduleFormProps
           <label className={labelClass}>Duración</label>
           <Select value={String(durationMinutes)} onValueChange={handleDurationChange}>
             <SelectTrigger className={inputClass}>
-              <SelectValue />
+              {/* Muestra el label legible — evita que Base UI muestre el número raw */}
+              <span>{DURATION_OPTIONS.find((o) => o.minutes === durationMinutes)?.label ?? `${durationMinutes} min`}</span>
             </SelectTrigger>
-            <SelectContent position="popper" className="z-50">
+            <SelectContent>
               {DURATION_OPTIONS.map(({ label, minutes }) => (
                 <SelectItem key={minutes} value={String(minutes)}>{label}</SelectItem>
               ))}
@@ -259,7 +302,7 @@ export function ScheduleForm({ classTypes, instructors = [] }: ScheduleFormProps
             <SelectTrigger className={inputClass}>
               <SelectValue placeholder="Sin lista de espera" />
             </SelectTrigger>
-            <SelectContent position="popper" className="z-50">
+            <SelectContent>
               <SelectItem value="none">Sin lista de espera</SelectItem>
               <SelectItem value="5">Hasta 5 personas</SelectItem>
               <SelectItem value="10">Hasta 10 personas</SelectItem>
@@ -341,6 +384,7 @@ export function ScheduleForm({ classTypes, instructors = [] }: ScheduleFormProps
             <label className={labelClass}>Repetir hasta</label>
             <input
               type="date"
+              style={{ colorScheme: "dark" }}
               className="w-full h-9 bg-[#161616] border border-[#2a2a2a] rounded-md px-3 text-sm text-white focus:border-[#FF5E14] focus:outline-none"
             />
           </div>

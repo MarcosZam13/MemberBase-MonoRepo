@@ -6,23 +6,40 @@ import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import { bookClass, cancelMyBooking } from "@/actions/calendar.actions";
 import type { ScheduledClass, ClassBooking } from "@/types/gym-calendar";
+import { utcToLocalDate } from "@/lib/time";
 
 interface ClassBlockProps {
   scheduledClass: ScheduledClass;
   myBooking?: ClassBooking;
   top: number;
   height: number;
+  // Columna y total de columnas para distribuir bloques solapados lado a lado
+  col: number;
+  totalCols: number;
 }
 
-export function ClassBlock({ scheduledClass, myBooking, top, height }: ClassBlockProps): React.ReactNode {
+// Gap en px entre bloques solapados para que se distingan visualmente
+const BLOCK_GAP = 2;
+
+export function ClassBlock({ scheduledClass, myBooking, top, height, col, totalCols }: ClassBlockProps): React.ReactNode {
   const [isLoading, setIsLoading] = useState(false);
 
   const color = scheduledClass.class_type?.color ?? "#FF5E14";
-  const startTime = new Date(scheduledClass.starts_at).toLocaleTimeString("es-CR", { hour: "2-digit", minute: "2-digit" });
-  const endTime = new Date(scheduledClass.ends_at).toLocaleTimeString("es-CR", { hour: "2-digit", minute: "2-digit" });
+  // Convertir UTC a hora local del gym para mostrar la hora correcta independiente del navegador
+  const localStart = utcToLocalDate(scheduledClass.starts_at);
+  const localEnd = utcToLocalDate(scheduledClass.ends_at);
+  const pad = (n: number): string => String(n).padStart(2, "0");
+  const startTime = `${pad(localStart.getHours())}:${pad(localStart.getMinutes())}`;
+  const endTime = `${pad(localEnd.getHours())}:${pad(localEnd.getMinutes())}`;
   const title = scheduledClass.title || scheduledClass.class_type?.name || "Clase";
   const bookingsCount = scheduledClass.bookings_count ?? 0;
   const maxCapacity = scheduledClass.max_capacity ?? 0;
+
+  // Calcula left/width según la columna asignada dentro de los solapados
+  const widthPct = 100 / totalCols;
+  const leftPct = col * widthPct;
+  const blockLeft = `calc(${leftPct}% + ${BLOCK_GAP}px)`;
+  const blockWidth = `calc(${widthPct}% - ${BLOCK_GAP * 2}px)`;
 
   // Convierte color hex a rgba para el fondo translúcido del bloque
   function hexToRgba(hex: string, alpha: number): string {
@@ -49,14 +66,25 @@ export function ClassBlock({ scheduledClass, myBooking, top, height }: ClassBloc
 
   return (
     <div
-      className="absolute left-1 right-1 rounded-lg px-1.5 py-1 cursor-pointer overflow-hidden transition-all hover:brightness-125 z-10"
+      className="absolute rounded-lg px-1.5 py-1 cursor-pointer overflow-hidden transition-all hover:brightness-125 z-10"
       style={{
         top,
         height,
+        left: blockLeft,
+        width: blockWidth,
         backgroundColor: hexToRgba(color, 0.18),
-        borderLeft: `2.5px solid ${color}`,
-        border: `0.5px solid ${hexToRgba(color, 0.4)}`,
+        // Usar solo propiedades longhand para evitar conflicto shorthand/longhand en React
+        borderTopWidth: "0.5px",
+        borderRightWidth: "0.5px",
+        borderBottomWidth: "0.5px",
         borderLeftWidth: "2.5px",
+        borderTopStyle: "solid",
+        borderRightStyle: "solid",
+        borderBottomStyle: "solid",
+        borderLeftStyle: "solid",
+        borderTopColor: hexToRgba(color, 0.4),
+        borderRightColor: hexToRgba(color, 0.4),
+        borderBottomColor: hexToRgba(color, 0.4),
         borderLeftColor: color,
       }}
     >

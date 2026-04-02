@@ -187,6 +187,38 @@ export async function getAttendanceLogs(
   }
 }
 
+// Obtiene el conteo de asistencias del mes actual por usuario — para la tabla de miembros admin
+export async function getMonthlyAttendanceCounts(): Promise<Record<string, number>> {
+  const user = await getCurrentUser();
+  if (!user || !["admin", "trainer"].includes(user.role)) return {};
+
+  const supabase = await createClient();
+  try {
+    const orgId = await getOrgId();
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
+
+    const { data, error } = await supabase
+      .from("gym_attendance_logs")
+      .select("user_id")
+      .eq("org_id", orgId)
+      .gte("check_in_at", startOfMonth.toISOString());
+
+    if (error) throw new Error(error.message);
+
+    // Agrupar conteos por user_id en memoria (más portable que COUNT GROUP BY)
+    const counts: Record<string, number> = {};
+    for (const row of data ?? []) {
+      counts[row.user_id] = (counts[row.user_id] ?? 0) + 1;
+    }
+    return counts;
+  } catch (error) {
+    console.error("[getMonthlyAttendanceCounts] Error:", error);
+    return {};
+  }
+}
+
 // Obtiene el check-in abierto del usuario actual (para el portal)
 export async function getMyOpenCheckin(): Promise<AttendanceLog | null> {
   const user = await getCurrentUser();

@@ -2,6 +2,8 @@
 // Extiende el patrón white label de MemberBase con feature flags gym-specific
 
 export const themeConfig = {
+  // Zona horaria del gimnasio — usada para conversión UTC ↔ local en calendario
+  timezone: "America/Costa_Rica",
   brand: {
     name: "GymBase",
     tagline: "Plataforma integral para gimnasios",

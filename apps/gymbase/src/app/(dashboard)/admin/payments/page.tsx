@@ -1,9 +1,13 @@
-// page.tsx — Revisión de comprobantes de pago pendientes
+// page.tsx — Gestión de pagos con tema oscuro consistente con el panel admin de GymBase
 
-import { PaymentsClient } from "@core/app/(dashboard)/admin/payments/PaymentsClient";
-import { getPendingPayments } from "@core/actions/payment.actions";
+import { getAllPaymentsAdmin } from "@/actions/payment.actions";
+import { GymPaymentsClient } from "@/components/gym/payments/GymPaymentsClient";
 
 export default async function PaymentsPage(): Promise<React.ReactNode> {
-  const payments = await getPendingPayments();
-  return <PaymentsClient initialPayments={payments} />;
+  const payments = await getAllPaymentsAdmin();
+  return (
+    <div className="p-6">
+      <GymPaymentsClient initialPayments={payments} />
+    </div>
+  );
 }

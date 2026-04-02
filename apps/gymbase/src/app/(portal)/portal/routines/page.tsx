@@ -1,8 +1,7 @@
-// page.tsx — Página de rutina activa del miembro
+// page.tsx — Página de rutina activa del miembro con vista interactiva de entrenamiento
 
-import { Card, CardContent } from "@core/components/ui/card";
 import { getMyRoutine, getRoutineById } from "@/actions/routine.actions";
-import { MyRoutineView } from "@/components/gym/routines/MyRoutineView";
+import { PortalWorkoutView } from "@/components/gym/routines/PortalWorkoutView";
 import { themeConfig } from "@/lib/theme";
 
 export default async function PortalRoutinesPage(): Promise<React.ReactNode> {
@@ -12,29 +11,29 @@ export default async function PortalRoutinesPage(): Promise<React.ReactNode> {
 
   if (!memberRoutine) {
     return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Mi Rutina</h1>
-          <p className="text-muted-foreground">Tu rutina de entrenamiento asignada</p>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 400, gap: 12 }}>
+        <div style={{ width: 48, height: 48, borderRadius: 14, background: "rgba(255,94,20,0.08)", border: "0.5px solid rgba(255,94,20,0.2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+            <path d="M2 12h3M19 12h3M5 12h3v-3h3v6h3v-4h3v4" stroke="#FF5E14" strokeWidth="2" strokeLinecap="round" />
+          </svg>
         </div>
-        <Card>
-          <CardContent className="p-6 text-center text-muted-foreground">
-            Aún no tienes una rutina asignada. Contacta a tu entrenador.
-          </CardContent>
-        </Card>
+        <p style={{ fontSize: 16, fontWeight: 600, color: "#888" }}>Sin rutina asignada</p>
+        <p style={{ fontSize: 13, color: "#555", textAlign: "center", maxWidth: 280 }}>
+          Contactá a tu entrenador para que te asigne una rutina personalizada.
+        </p>
       </div>
     );
   }
 
   const routineDetail = await getRoutineById(memberRoutine.routine_id);
 
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">Mi Rutina</h1>
-        <p className="text-muted-foreground">Tu rutina de entrenamiento asignada</p>
-      </div>
-      <MyRoutineView memberRoutine={memberRoutine} routineDetail={routineDetail} />
-    </div>
-  );
+  if (!routineDetail) {
+    return (
+      <p style={{ color: "#555", textAlign: "center", padding: "48px 0" }}>
+        No se pudo cargar el detalle de la rutina.
+      </p>
+    );
+  }
+
+  return <PortalWorkoutView routine={routineDetail} />;
 }

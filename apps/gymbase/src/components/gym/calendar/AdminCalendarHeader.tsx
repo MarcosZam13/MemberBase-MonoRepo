@@ -2,17 +2,22 @@
 
 "use client";
 
+import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import type { ClassType } from "@/types/gym-calendar";
-import type { AdminProfile } from "@/actions/settings.actions";
 
 interface AdminCalendarHeaderProps {
   weekLabel: string;
-  classTypes: ClassType[];
-  instructors: AdminProfile[];
+  weekOffset: number;
 }
 
-export function AdminCalendarHeader({ weekLabel }: AdminCalendarHeaderProps): React.ReactNode {
+export function AdminCalendarHeader({ weekLabel, weekOffset }: AdminCalendarHeaderProps): React.ReactNode {
+  const router = useRouter();
+
+  function navigate(delta: number): void {
+    const next = weekOffset + delta;
+    router.push(next === 0 ? "/admin/calendar" : `/admin/calendar?w=${next}`);
+  }
+
   return (
     <div className="flex items-center justify-between mb-4">
       <div>
@@ -20,14 +25,23 @@ export function AdminCalendarHeader({ weekLabel }: AdminCalendarHeaderProps): Re
         <p className="text-sm text-[#555] mt-0.5">{weekLabel}</p>
       </div>
       <div className="flex items-center gap-2">
-        {/* Navegación entre semanas — placeholder para futura navegación con estado */}
-        <button className="w-8 h-8 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg flex items-center justify-center hover:border-[#333] transition-colors">
+        <button
+          onClick={() => navigate(-1)}
+          className="w-8 h-8 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg flex items-center justify-center hover:border-[#333] transition-colors"
+        >
           <ChevronLeft className="w-4 h-4 text-[#888]" />
         </button>
-        <button className="h-8 px-3 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-xs text-[#666] hover:border-[#333] transition-colors">
+        <button
+          onClick={() => navigate(-weekOffset)}
+          disabled={weekOffset === 0}
+          className="h-8 px-3 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-xs transition-colors disabled:opacity-40 disabled:cursor-default hover:border-[#333] text-[#666]"
+        >
           Hoy
         </button>
-        <button className="w-8 h-8 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg flex items-center justify-center hover:border-[#333] transition-colors">
+        <button
+          onClick={() => navigate(1)}
+          className="w-8 h-8 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg flex items-center justify-center hover:border-[#333] transition-colors"
+        >
           <ChevronRight className="w-4 h-4 text-[#888]" />
         </button>
       </div>

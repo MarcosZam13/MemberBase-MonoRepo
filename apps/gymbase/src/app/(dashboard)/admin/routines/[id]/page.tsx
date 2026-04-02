@@ -6,7 +6,10 @@ import { ArrowLeft, Pencil } from "lucide-react";
 import { Button } from "@core/components/ui/button";
 import { getRoutineById } from "@/actions/routine.actions";
 import { getExercises } from "@/actions/exercise.actions";
+import { getPlans } from "@core/actions/membership.actions";
+import { getMembers } from "@core/actions/admin.actions";
 import { RoutineBuilderClient } from "@/components/gym/routines/RoutineBuilderClient";
+import { RoutineAssignmentSection } from "@/components/gym/routines/RoutineAssignmentSection";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -14,9 +17,11 @@ interface Props {
 
 export default async function EditRoutinePage({ params }: Props): Promise<React.ReactNode> {
   const { id } = await params;
-  const [routine, exercises] = await Promise.all([
+  const [routine, exercises, plans, members] = await Promise.all([
     getRoutineById(id),
     getExercises(),
+    getPlans(),
+    getMembers(),
   ]);
 
   if (!routine) notFound();
@@ -49,6 +54,9 @@ export default async function EditRoutinePage({ params }: Props): Promise<React.
 
       {/* Constructor principal — 3 columnas */}
       <RoutineBuilderClient routine={routine} exercises={exercises} />
+
+      {/* Sección de asignación por plan o miembro */}
+      <RoutineAssignmentSection routineId={id} plans={plans} members={members} />
     </div>
   );
 }

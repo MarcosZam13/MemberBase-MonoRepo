@@ -2,6 +2,7 @@
 
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { cache } from "react";
 
 // Crea una instancia del cliente de Supabase para el contexto del servidor.
 // Lee las cookies de la request actual para mantener la sesión del usuario.
@@ -33,8 +34,11 @@ export async function createClient() {
 }
 
 // Obtiene el perfil del usuario autenticado actual desde la base de datos.
-// Verifica la sesión y luego consulta la tabla profiles para obtener el rol.
-export async function getCurrentUser() {
+// cache() de React deduplica esta llamada dentro del mismo render tree:
+// aunque múltiples Server Components la invoquen en paralelo, el request
+// HTTP a Supabase Auth se ejecuta una sola vez por ciclo de render,
+// evitando el rate limit de la API de autenticación.
+export const getCurrentUser = cache(async () => {
   const supabase = await createClient();
 
   const {
@@ -51,4 +55,4 @@ export async function getCurrentUser() {
     .single();
 
   return profile;
-}
+});

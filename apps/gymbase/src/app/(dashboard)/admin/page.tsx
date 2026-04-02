@@ -140,7 +140,7 @@ export default async function AdminDashboardPage(): Promise<React.ReactNode> {
             gradientClass="stat-gradient-green"
             value={formatPrice(stats.monthlyRevenue, "CRC")}
             label="Ingresos del mes"
-            sub="Últimos 30 días"
+            sub={now.toLocaleDateString("es-CR", { month: "long", year: "numeric" })}
             href="/admin/payments"
           />
           <StatCard

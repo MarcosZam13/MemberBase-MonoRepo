@@ -24,6 +24,8 @@ export const createExerciseSchema = z.object({
     (v) => (typeof v === "number" && isNaN(v) ? null : v),
     z.number().int("Debe ser un número entero").min(1, "Mínimo 1 segundo").max(3600, "Máximo 3600 segundos").nullable().optional()
   ),
+  // Referencia al ejercicio padre cuando se crea una variante
+  parent_exercise_id: z.string().uuid().optional().nullable(),
 });
 
 export const createRoutineSchema = z.object({
