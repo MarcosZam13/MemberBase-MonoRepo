@@ -1233,24 +1233,66 @@ export default async function MemberDetailPage({ params, searchParams }: MemberD
         </div>
       )}
 
-      {/* Tab: Pagos — historial inline + registro de pago manual */}
+      {/* Tab: Pagos — estado actual + historial inline + registro de pago manual */}
       {tab === "payments" && (
         <div className="space-y-3">
 
-          {/* Alerta de vencimiento si aplica */}
-          {(isExpiringSoon || isExpired) && (
-            <div className={`flex items-center gap-3 rounded-[12px] px-4 py-3 border ${
-              isExpired
-                ? "bg-red-500/10 border-red-500/20 text-red-400"
-                : "bg-yellow-500/10 border-yellow-500/20 text-yellow-400"
-            }`}>
-              <AlertTriangle className="w-4 h-4 shrink-0" />
-              <p className="text-[12px] font-medium">
-                {isExpired
-                  ? "Membresía vencida — el miembro no puede acceder al gym"
-                  : `La membresía vence en ${daysUntilExpiry} día${daysUntilExpiry === 1 ? "" : "s"}`
-                }
-              </p>
+          {/* Card: estado actual de membresía */}
+          {sub ? (
+            <div className="bg-[#111] border border-[#1a1a1a] rounded-[14px] p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] font-semibold text-[#FF5E14] uppercase tracking-[0.08em]">
+                  Membresía actual
+                </p>
+                <span
+                  className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border ${statusCfg.cls}`}
+                >
+                  {statusCfg.label}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between text-[12px]">
+                <p className="text-[#ccc] font-medium">{sub.plan?.name ?? "—"}</p>
+                <p className="text-[#666]">
+                  {sub.expires_at ? `Vence ${formatDate(sub.expires_at)}` : "Sin vencimiento"}
+                </p>
+              </div>
+
+              {/* Barra de progreso: días consumidos vs duración total del plan */}
+              {membershipTotalDays > 0 && (
+                <div className="space-y-1">
+                  <div className="h-1.5 w-full bg-[#1a1a1a] rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all"
+                      style={{ width: `${membershipProgressPct}%`, backgroundColor: membershipBarColor }}
+                    />
+                  </div>
+                  <div className="flex justify-between text-[10px] text-[#555]">
+                    <span>{membershipDaysUsed} días consumidos</span>
+                    <span>{membershipDaysLeft} días restantes</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Alerta de vencimiento */}
+              {(isExpiringSoon || isExpired) && (
+                <div className={`flex items-center gap-2 rounded-[10px] px-3 py-2 border ${
+                  isExpired
+                    ? "bg-red-500/10 border-red-500/20 text-red-400"
+                    : "bg-yellow-500/10 border-yellow-500/20 text-yellow-400"
+                }`}>
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                  <p className="text-[11px] font-medium">
+                    {isExpired
+                      ? "Membresía vencida — el miembro no puede acceder al gym"
+                      : `Vence en ${daysUntilExpiry} día${daysUntilExpiry === 1 ? "" : "s"}`}
+                  </p>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="bg-[#111] border border-[#1a1a1a] rounded-[14px] p-4">
+              <p className="text-[12px] text-[#555]">Sin membresía registrada</p>
             </div>
           )}
 
@@ -1269,7 +1311,7 @@ export default async function MemberDetailPage({ params, searchParams }: MemberD
             )}
           </div>
 
-          {/* Tabla de pagos */}
+          {/* Tabla de pagos: Fecha / Plan / Monto / Método / Estado / Comprobante */}
           <div className="bg-[#111] border border-[#1a1a1a] rounded-[14px] overflow-hidden">
             {memberPayments.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-10 text-center">
@@ -1280,7 +1322,7 @@ export default async function MemberDetailPage({ params, searchParams }: MemberD
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-[#1a1a1a]">
-                    {["Fecha", "Monto", "Método", "Estado", ""].map((h) => (
+                    {["Fecha", "Plan", "Monto", "Método", "Estado", "Comprobante"].map((h) => (
                       <th
                         key={h}
                         className="px-4 py-2.5 text-left text-[9px] text-[#444] uppercase tracking-[0.07em] font-medium"
@@ -1299,9 +1341,9 @@ export default async function MemberDetailPage({ params, searchParams }: MemberD
                       rejected: { bg: "#EF444420", text: "#F87171", label: "Rechazado" },
                     };
                     const sc = statusMap[pStatus] ?? statusMap.pending;
-                    const currency =
-                      (payment.subscription as { plan?: { currency?: string } } | null)
-                        ?.plan?.currency ?? "CRC";
+                    const planInfo = (payment.subscription as { plan?: { name?: string; currency?: string } } | null)?.plan;
+                    const currency = planInfo?.currency ?? "CRC";
+                    const hasFile = !!payment.file_url && payment.file_url !== "";
                     return (
                       <tr
                         key={payment.id}
@@ -1310,6 +1352,11 @@ export default async function MemberDetailPage({ params, searchParams }: MemberD
                         <td className="px-4 py-3 text-[12px] text-[#888]">
                           {formatDate(payment.created_at)}
                         </td>
+                        <td className="px-4 py-3">
+                          <span className="text-[10px] bg-[#161616] border border-[#222] rounded px-1.5 py-0.5 text-[#777]">
+                            {planInfo?.name ?? "—"}
+                          </span>
+                        </td>
                         <td className="px-4 py-3 text-[13px] text-[#ccc] font-medium">
                           {payment.amount ? formatPrice(payment.amount, currency) : "—"}
                         </td>
@@ -1317,23 +1364,33 @@ export default async function MemberDetailPage({ params, searchParams }: MemberD
                           {payment.payment_method ?? "—"}
                         </td>
                         <td className="px-4 py-3">
-                          <span
-                            className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium"
-                            style={{ backgroundColor: sc.bg, color: sc.text }}
-                          >
-                            {sc.label}
-                          </span>
+                          <div className="space-y-0.5">
+                            <span
+                              className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium"
+                              style={{ backgroundColor: sc.bg, color: sc.text }}
+                            >
+                              {sc.label}
+                            </span>
+                            {/* Motivo de rechazo bajo el badge */}
+                            {pStatus === "rejected" && payment.rejection_reason && (
+                              <p className="text-[9px] text-[#555] leading-tight max-w-[140px]">
+                                {payment.rejection_reason}
+                              </p>
+                            )}
+                          </div>
                         </td>
                         <td className="px-4 py-3">
-                          {payment.file_url && (
+                          {hasFile ? (
                             <a
                               href={payment.file_url}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="text-[10px] text-[#FF5E14] hover:underline"
                             >
-                              Ver comprobante
+                              Ver
                             </a>
+                          ) : (
+                            <span className="text-[10px] text-[#444]">Presencial</span>
                           )}
                         </td>
                       </tr>

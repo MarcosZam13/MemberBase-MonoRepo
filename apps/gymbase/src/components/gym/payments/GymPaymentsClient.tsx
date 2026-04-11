@@ -3,7 +3,6 @@
 "use client";
 
 import { useState, useDeferredValue } from "react";
-import Image from "next/image";
 import { Search, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { approvePayment, rejectPayment } from "@/actions/payment.actions";
@@ -301,13 +300,15 @@ export function GymPaymentsClient({ initialPayments, manualPaymentSlot }: GymPay
                     </span>
                   )}
                 </div>
-              ) : viewingProof.file_url.match(/\.(jpg|jpeg|png|webp)$/i) ? (
-                <div className="relative h-72 bg-[#0d0d0d] rounded-xl overflow-hidden mb-4">
-                  <Image
+              ) : viewingProof.file_url.match(/\.(jpg|jpeg|png|webp)(\?|$)/i) ? (
+                // Usar <img> en lugar de next/image — signed URLs de Supabase tienen dominios variables
+                // y las imágenes de comprobantes son de tamaño desconocido (uso admin solamente)
+                <div className="h-72 bg-[#0d0d0d] rounded-xl overflow-hidden mb-4 flex items-center justify-center">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
                     src={viewingProof.file_url}
                     alt="Comprobante de pago"
-                    fill
-                    className="object-contain"
+                    className="max-h-full max-w-full object-contain"
                   />
                 </div>
               ) : (
