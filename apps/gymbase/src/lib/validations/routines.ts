@@ -49,6 +49,13 @@ export const createRoutineSchema = z.object({
   is_template: z.boolean().optional(),
 });
 
+// Configuración de una serie individual para pirámides y variaciones de peso
+const defaultSetConfigSchema = z.object({
+  set_number: z.number().int().min(1),
+  weight_kg: z.number().min(0).max(1000).nullable().optional(),
+  reps: z.string().max(20).nullable().optional(),
+});
+
 export const addRoutineExerciseSchema = z.object({
   exercise_id: z.string().uuid("ID de ejercicio inválido"),
   sets: z
@@ -65,11 +72,34 @@ export const addRoutineExerciseSchema = z.object({
     .max(600, "Máximo 600 segundos")
     .optional(),
   notes: z.string().optional(),
+  // default_sets: configuración de pesos/reps por serie para pirámides
+  default_sets: z.array(defaultSetConfigSchema).nullable().optional(),
+});
+
+// Schema para actualizar solo los default_sets de un ejercicio ya en la rutina
+export const updateExerciseDefaultSetsSchema = z.object({
+  routine_exercise_id: z.string().uuid("ID de ejercicio de rutina inválido"),
+  default_sets: z.array(defaultSetConfigSchema).nullable(),
 });
 
 export const assignRoutineSchema = z.object({
   user_id: z.string().uuid("ID de usuario inválido"),
   routine_id: z.string().uuid("ID de rutina inválido"),
+});
+
+// Asignación de rutina con etiqueta opcional (nuevo modelo multi-rutina)
+export const assignRoutineToMemberSchema = z.object({
+  user_id: z.string().uuid("ID de usuario inválido"),
+  routine_id: z.string().uuid("ID de rutina inválido"),
+  label: z.string().max(50, "La etiqueta no puede exceder 50 caracteres").optional(),
+});
+
+export const setFeaturedRoutineSchema = z.object({
+  member_routine_id: z.string().uuid("ID de asignación inválido"),
+});
+
+export const removeRoutineFromMemberSchema = z.object({
+  member_routine_id: z.string().uuid("ID de asignación inválido"),
 });
 
 export const logWorkoutSchema = z.object({
@@ -82,8 +112,93 @@ export const logWorkoutSchema = z.object({
   exercises_done: z.any().optional(),
 });
 
+// Schema de un set individual al completar una sesión
+const workoutSetSchema = z.object({
+  set_number: z.number().int(),
+  weight_kg: z.number().nullable(),
+  reps: z.number().int().min(0),
+  completed: z.boolean(),
+  is_pr: z.boolean(),
+});
+
+// Schema de un ejercicio con sus sets al completar una sesión
+const workoutExerciseDoneSchema = z.object({
+  routine_exercise_id: z.string().uuid(),
+  exercise_id: z.string().uuid(),
+  exercise_name: z.string(),
+  sets: z.array(workoutSetSchema),
+});
+
+// Schema principal para completeWorkoutSession
+export const completeWorkoutSessionSchema = z.object({
+  routine_day_id: z.string().uuid("ID de día inválido"),
+  exercises: z.array(workoutExerciseDoneSchema).min(1, "Debe incluir al menos un ejercicio"),
+  duration_minutes: z.number().int().min(1).optional(),
+});
+
+export type CompleteWorkoutSessionInput = z.infer<typeof completeWorkoutSessionSchema>;
+
+// ── Schemas para rutinas propias del miembro ─────────────────────────────────
+
+// Paso 1: información básica de la nueva rutina del miembro
+export const createMemberRoutineSchema = z.object({
+  name: z
+    .string()
+    .min(2, "El nombre debe tener al menos 2 caracteres")
+    .max(100, "El nombre no puede exceder 100 caracteres"),
+  description: z.string().max(500, "Máximo 500 caracteres").optional(),
+  is_public: z.boolean().optional().default(false),
+});
+
+// Actualizar datos básicos de una rutina del miembro
+export const updateMemberRoutineSchema = z.object({
+  name: z.string().min(2).max(100).optional(),
+  description: z.string().max(500).optional(),
+  is_public: z.boolean().optional(),
+});
+
+// Agregar día a una rutina del miembro
+export const addDayToMyRoutineSchema = z.object({
+  routine_id: z.string().uuid("ID de rutina inválido"),
+  name: z
+    .string()
+    .min(1, "El nombre del día es requerido")
+    .max(60, "Máximo 60 caracteres"),
+});
+
+// Agregar ejercicio a un día de una rutina del miembro
+export const addExerciseToMyDaySchema = z.object({
+  day_id: z.string().uuid("ID de día inválido"),
+  exercise_id: z.string().uuid("ID de ejercicio inválido"),
+  sets: z.number().int().min(1).max(20).optional(),
+  reps: z.string().max(20).optional(),
+  rest_seconds: z.number().int().min(0).max(600).optional(),
+  notes: z.string().max(200).optional(),
+});
+
+// Crear un ejercicio privado del miembro (nombre + grupo muscular como mínimo)
+export const createPrivateExerciseSchema = z.object({
+  name: z
+    .string()
+    .min(2, "El nombre debe tener al menos 2 caracteres")
+    .max(100, "Máximo 100 caracteres"),
+  muscle_group: z.string().optional(),
+  equipment: z.string().optional(),
+  description: z.string().max(300).optional(),
+});
+
+export type CreateMemberRoutineInput = z.infer<typeof createMemberRoutineSchema>;
+export type UpdateMemberRoutineInput = z.infer<typeof updateMemberRoutineSchema>;
+export type AddDayToMyRoutineInput = z.infer<typeof addDayToMyRoutineSchema>;
+export type AddExerciseToMyDayInput = z.infer<typeof addExerciseToMyDaySchema>;
+export type CreatePrivateExerciseInput = z.infer<typeof createPrivateExerciseSchema>;
+
 export type CreateExerciseInput = z.infer<typeof createExerciseSchema>;
 export type CreateRoutineInput = z.infer<typeof createRoutineSchema>;
 export type AddRoutineExerciseInput = z.infer<typeof addRoutineExerciseSchema>;
+export type UpdateExerciseDefaultSetsInput = z.infer<typeof updateExerciseDefaultSetsSchema>;
 export type AssignRoutineInput = z.infer<typeof assignRoutineSchema>;
+export type AssignRoutineToMemberInput = z.infer<typeof assignRoutineToMemberSchema>;
+export type SetFeaturedRoutineInput = z.infer<typeof setFeaturedRoutineSchema>;
+export type RemoveRoutineFromMemberInput = z.infer<typeof removeRoutineFromMemberSchema>;
 export type LogWorkoutInput = z.infer<typeof logWorkoutSchema>;

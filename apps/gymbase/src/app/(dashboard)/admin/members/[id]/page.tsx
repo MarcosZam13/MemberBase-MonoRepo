@@ -11,15 +11,16 @@ import {
 import { getMemberById } from "@core/actions/admin.actions";
 import { formatDate, formatPrice } from "@/lib/utils";
 import { getHealthProfile, getHealthHistory, getProgressPhotos } from "@/actions/health.actions";
-import { getRoutines, getMemberActiveRoutine, getRoutineById } from "@/actions/routine.actions";
+import { getRoutines, getMemberActiveRoutine, getMemberRoutineStack, getRoutineById } from "@/actions/routine.actions";
+import { getMemberPRsAdmin } from "@/actions/workout.actions";
 import { getMemberAttendanceLogs } from "@/actions/checkin.actions";
 import { HealthMetricsForm } from "@/components/gym/health/HealthMetricsForm";
 import { SnapshotForm } from "@/components/gym/health/SnapshotForm";
 import { HealthChartCard } from "@/components/gym/health/HealthChartCard";
 import { ProgressPhotoUpload } from "@/components/gym/health/ProgressPhotoUpload";
 import { RoutineDayAccordion } from "@/components/gym/routines/RoutineDayAccordion";
+import { MemberRoutineStack } from "@/components/gym/routines/MemberRoutineStack";
 import { MemberProfileEditForm } from "@/components/gym/members/MemberProfileEditForm";
-import { AssignRoutineButton } from "@/components/gym/members/AssignRoutineButton";
 import { ManualPaymentButton } from "@/components/gym/members/ManualPaymentButton";
 import { getMemberPayments } from "@/actions/payment.actions";
 import { getPlans } from "@core/actions/membership.actions";
@@ -91,19 +92,21 @@ export default async function MemberDetailPage({ params, searchParams }: MemberD
   const statusCfg = STATUS_CONFIG[status];
 
   // Cargar todos los datos en paralelo según módulos activos y pestaña
-  const [healthProfile, healthSnapshots, routines, memberActiveRoutine, memberLogs, memberPayments, membershipPlans, progressPhotos] =
+  const [healthProfile, healthSnapshots, routines, memberRoutineStack, memberActiveRoutine, memberLogs, memberPayments, membershipPlans, progressPhotos, memberPRs] =
     await Promise.all([
       themeConfig.features.gym_health_metrics ? getHealthProfile(id) : Promise.resolve(null),
       themeConfig.features.gym_health_metrics ? getHealthHistory(id, 50) : Promise.resolve([]),
       themeConfig.features.gym_routines ? getRoutines() : Promise.resolve([]),
+      themeConfig.features.gym_routines ? getMemberRoutineStack(id) : Promise.resolve({ active: [], history: [] }),
       themeConfig.features.gym_routines ? getMemberActiveRoutine(id) : Promise.resolve(null),
       getMemberAttendanceLogs(id),
       getMemberPayments(id),
       getPlans(true),
       themeConfig.features.gym_progress ? getProgressPhotos(id) : Promise.resolve([]),
+      themeConfig.features.gym_routines ? getMemberPRsAdmin(id) : Promise.resolve([]),
     ]);
 
-  // Cargar detalle completo de la rutina activa — query serial porque depende de memberActiveRoutine
+  // Cargar detalle completo de la rutina destacada — query serial porque depende de memberActiveRoutine
   const activeRoutineDetail = memberActiveRoutine?.routine_id
     ? await getRoutineById(memberActiveRoutine.routine_id)
     : null;
@@ -1077,20 +1080,20 @@ export default async function MemberDetailPage({ params, searchParams }: MemberD
         </div>
       )}
 
-      {/* Tab: Rutina — col izquierda (detalle activa) + col derecha (lista para asignar) */}
+      {/* Tab: Rutina — stack de rutinas activas + detalle de destacada + historial */}
       {tab === "routine" && themeConfig.features.gym_routines && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
 
-          {/* ── Columna izquierda: detalle de la rutina activa (2/3) ── */}
+          {/* ── Columna izquierda: detalle de la rutina destacada (2/3) ── */}
           <div className="lg:col-span-2 space-y-3">
             {memberActiveRoutine && activeRoutineDetail ? (
               <>
-                {/* Card: header, stats y grupos musculares */}
+                {/* Card: header, stats y grupos musculares de la rutina destacada */}
                 <div className="bg-[#111] border border-[#1a1a1a] rounded-[14px] p-4">
                   <div className="flex items-start justify-between mb-3">
                     <div>
                       <p className="text-[10px] font-semibold text-[#FF5E14] uppercase tracking-[0.08em] mb-1">
-                        Rutina activa
+                        Rutina destacada
                       </p>
                       <p className="text-[17px] font-bold font-barlow text-white leading-tight">
                         {activeRoutineDetail.name}
@@ -1101,10 +1104,10 @@ export default async function MemberDetailPage({ params, searchParams }: MemberD
                     </div>
                     <span
                       className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium shrink-0"
-                      style={{ backgroundColor: "#22C55E20", color: "#22C55E", border: "1px solid #22C55E30" }}
+                      style={{ backgroundColor: "#FF5E1420", color: "#FF5E14", border: "1px solid #FF5E1430" }}
                     >
-                      <span className="w-1.5 h-1.5 rounded-full bg-[#22C55E]" />
-                      Activa
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#FF5E14]" />
+                      Destacada
                     </span>
                   </div>
 
@@ -1153,7 +1156,7 @@ export default async function MemberDetailPage({ params, searchParams }: MemberD
                   </div>
                 </div>
 
-                {/* Acordeón de días con ejercicios */}
+                {/* Acordeón de días con ejercicios de la rutina destacada */}
                 <div className="bg-[#111] border border-[#1a1a1a] rounded-[14px] overflow-hidden">
                   <div className="px-4 py-3 border-b border-[#1a1a1a]">
                     <p className="text-[10px] font-semibold text-[#FF5E14] uppercase tracking-[0.08em]">
@@ -1170,66 +1173,82 @@ export default async function MemberDetailPage({ params, searchParams }: MemberD
                 </div>
               </>
             ) : (
-              /* Estado vacío: el miembro no tiene rutina asignada */
+              /* Estado vacío: el miembro no tiene ninguna rutina destacada */
               <div className="bg-[#111] border border-[#1a1a1a] rounded-[14px] p-8 text-center">
-                <p className="text-[13px] text-[#555] mb-1">Sin rutina activa</p>
-                <p className="text-[11px] text-[#333]">Asigna una rutina desde el panel derecho</p>
+                <p className="text-[13px] text-[#555] mb-1">Sin rutina destacada</p>
+                <p className="text-[11px] text-[#333]">Asigna rutinas desde el panel derecho</p>
               </div>
             )}
           </div>
 
-          {/* ── Columna derecha: lista compacta para asignar/reasignar (1/3) ── */}
+          {/* ── Columna derecha: stack interactivo con asignación y historial (1/3) ── */}
           <div className="space-y-3">
-            <div className="bg-[#111] border border-[#1a1a1a] rounded-[14px] overflow-hidden">
-              <div className="px-4 py-3 border-b border-[#1a1a1a]">
-                <p className="text-[10px] font-semibold text-[#FF5E14] uppercase tracking-[0.08em]">
-                  Cambiar rutina
-                </p>
-              </div>
-              <div className="divide-y divide-[#0d0d0d]">
-                {routines.length === 0 ? (
-                  <div className="px-4 py-6 text-center">
-                    <p className="text-[11px] text-[#444]">Sin rutinas creadas</p>
-                    <Link
-                      href="/admin/routines/new"
-                      className="text-[10px] text-[#FF5E14] hover:underline mt-1 block"
-                    >
-                      Crear rutina →
-                    </Link>
-                  </div>
-                ) : (
-                  routines.map((routine) => {
-                    const isActive = memberActiveRoutine?.routine_id === routine.id;
-                    return (
-                      <div
-                        key={routine.id}
-                        className={`flex items-center justify-between px-4 py-3 transition-colors ${
-                          isActive ? "bg-[#0d1a10]" : "hover:bg-[#0f0f0f]"
-                        }`}
-                      >
-                        <div className="flex-1 min-w-0">
-                          <p className={`text-[12px] font-medium truncate ${isActive ? "text-[#22C55E]" : "text-[#ccc]"}`}>
-                            {routine.name}
-                          </p>
-                          {routine.days_per_week && (
-                            <p className="text-[10px] text-[#444]">{routine.days_per_week} días/semana</p>
-                          )}
-                        </div>
-                        <div className="ml-2 shrink-0">
-                          {isActive ? (
-                            <span className="text-[9px] text-[#22C55E] font-medium">Activa</span>
-                          ) : (
-                            <AssignRoutineButton memberId={id} routineId={routine.id} isActive={false} />
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </div>
+            <MemberRoutineStack
+              memberId={id}
+              activeRoutines={memberRoutineStack.active}
+              historyRoutines={memberRoutineStack.history}
+              availableRoutines={routines}
+            />
           </div>
 
+        </div>
+      )}
+
+      {/* Tab: Rutina — sección PRs del miembro (debajo del grid principal) */}
+      {tab === "routine" && themeConfig.features.gym_routines && (
+        <div className="mt-3">
+          <div className="bg-[#111] border border-[#1a1a1a] rounded-[14px] overflow-hidden">
+            <div className="px-4 py-3 border-b border-[#1a1a1a] flex items-center justify-between">
+              <p className="text-[10px] font-semibold text-[#FF5E14] uppercase tracking-[0.08em]">
+                Records personales
+              </p>
+              <span className="text-[10px] text-[#444]">{memberPRs.length} ejercicios</span>
+            </div>
+
+            {memberPRs.length === 0 ? (
+              <div className="py-10 text-center">
+                <p className="text-[12px] text-[#444]">Aún no hay registros de peso</p>
+                <p className="text-[10px] text-[#333] mt-1">
+                  Aparecerán aquí cuando el miembro registre pesos en sus entrenamientos
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 p-3">
+                {memberPRs.map((pr) => (
+                  <div
+                    key={pr.id}
+                    className="bg-[#0d0d0d] border border-[#161616] rounded-[12px] p-3"
+                  >
+                    <div className="flex items-start justify-between gap-1 mb-2">
+                      <p className="text-[11px] font-semibold text-[#ccc] leading-tight line-clamp-2">
+                        {(pr.exercise as { name: string; muscle_group: string | null } | undefined)?.name ?? "Ejercicio"}
+                      </p>
+                      <span
+                        className="text-[8px] font-medium px-1.5 py-0.5 rounded-full shrink-0"
+                        style={{ backgroundColor: "#FF5E1415", color: "#FF5E14", border: "1px solid #FF5E1425" }}
+                      >
+                        PR
+                      </span>
+                    </div>
+                    {(pr.exercise as { name: string; muscle_group: string | null } | undefined)?.muscle_group && (
+                      <p className="text-[9px] text-[#444] mb-2">
+                        {MUSCLE_LABELS[(pr.exercise as { name: string; muscle_group: string | null }).muscle_group!] ??
+                          (pr.exercise as { name: string; muscle_group: string | null }).muscle_group}
+                      </p>
+                    )}
+                    <p className="text-[20px] font-bold font-barlow text-[#FF5E14] leading-none">
+                      {pr.max_weight ?? "—"} <span className="text-[13px] font-normal text-[#666]">kg</span>
+                    </p>
+                    <p className="text-[9px] text-[#444] mt-1">
+                      {new Date(pr.achieved_at).toLocaleDateString("es-CR", {
+                        day: "numeric", month: "short", year: "numeric",
+                      })}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 

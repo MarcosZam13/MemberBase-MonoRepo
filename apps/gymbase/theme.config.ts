@@ -59,6 +59,8 @@ export const themeConfig = {
     gym_progress: true,
     gym_calendar: true,
     gym_challenges: true,
+    // Permite a los miembros crear sus propias rutinas personalizadas
+    gym_member_custom_routines: true,
   },
 } as const;
 
