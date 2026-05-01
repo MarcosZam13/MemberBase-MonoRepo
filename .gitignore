@@ -53,3 +53,22 @@ coverage/
 
 # Claude Code (contiene keys y configuración local)
 .claude/
+
+# OpenCode — config local de herramienta de AI (puede contener API keys)
+opencode.jsonc
+opencode.json
+.opencode/
+
+# Agent prompts locales — contienen project IDs y configuración sensible
+deploy.md
+docs.md
+qa.md
+
+# Next.js panic logs generados por Turbopack
+next-panic-*.log
+
+# Docs sync (no versionar)
+docs/obsidian/
+
+# Obsidian local
+GymBaseObsidian/

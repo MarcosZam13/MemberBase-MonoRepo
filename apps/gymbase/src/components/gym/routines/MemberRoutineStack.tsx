@@ -67,7 +67,7 @@ export function MemberRoutineStack({
     const result = await setFeaturedRoutineAction({ member_routine_id: memberRoutineId });
     setFeaturingId(null);
     if (!result.success) {
-      toast.error(typeof result.error === "string" ? result.error : "Error");
+      toast.error(typeof result.error === "string" ? result.error : "Error al destacar la rutina");
       return;
     }
     toast.success("Rutina destacada actualizada");

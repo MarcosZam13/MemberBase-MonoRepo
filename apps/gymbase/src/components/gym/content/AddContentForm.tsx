@@ -7,20 +7,22 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Loader2, Video, FileText, FileDown } from "lucide-react";
+import { Loader2, Video, FileText, FileDown, Link as LinkIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@core/components/ui/button";
 import { Input } from "@core/components/ui/input";
-import { createContent } from "@/actions/content.actions";
+import { VideoEmbed } from "./VideoEmbed";
+import { createContent } from "@core/actions/content.actions";
 import type { MembershipPlan, ContentCategory, ContentType } from "@/types/database";
 
-// Solo los tres tipos que muestra el mockup en la selección visual
-type VisibleType = "video" | "article" | "file";
+// Los cuatro tipos disponibles al crear contenido
+type VisibleType = "video" | "article" | "file" | "link";
 
 const VISIBLE_TYPES: { value: VisibleType; label: string; Icon: React.ComponentType<React.SVGProps<SVGSVGElement>>; iconBg: string; iconColor: string }[] = [
   { value: "video",   label: "Video",    Icon: Video,    iconBg: "rgba(239,68,68,0.1)",  iconColor: "#EF4444" },
   { value: "article", label: "Artículo", Icon: FileText, iconBg: "rgba(56,189,248,0.1)", iconColor: "#38BDF8" },
   { value: "file",    label: "PDF",      Icon: FileDown, iconBg: "rgba(250,204,21,0.1)", iconColor: "#FACC15" },
+  { value: "link",    label: "Enlace",   Icon: LinkIcon, iconBg: "rgba(34,197,94,0.1)",  iconColor: "#22C55E" },
 ];
 
 const formSchema = z.object({
@@ -154,7 +156,7 @@ export function AddContentForm({ plans, categories }: AddContentFormProps): Reac
       {/* ── Tipo de contenido ── */}
       <div className={sectionClass}>Tipo de contenido</div>
 
-      <div className="grid grid-cols-3 gap-2.5 mb-4">
+      <div className="grid grid-cols-4 gap-2.5 mb-4">
         {VISIBLE_TYPES.map(({ value, label, Icon, iconBg, iconColor }) => {
           const isSelected = contentType === value;
           return (
@@ -203,16 +205,18 @@ export function AddContentForm({ plans, categories }: AddContentFormProps): Reac
       {/* ── URL del recurso ── */}
       <div className="mb-4">
         <label className={labelClass}>
-          {contentType === "video" ? "URL del video" : contentType === "file" ? "URL del PDF" : "URL del artículo"}
-          {contentType === "video" && <span className="text-[#FF5E14] ml-0.5">*</span>}
+          {contentType === "video" ? "URL del video" : contentType === "file" ? "URL del PDF" : contentType === "link" ? "URL del enlace" : "URL del artículo"}
+          {(contentType === "video" || contentType === "link") && <span className="text-[#FF5E14] ml-0.5">*</span>}
         </label>
         <Input
           type="url"
           placeholder={
             contentType === "video"
-              ? "https://youtube.com/watch?v=..."
+              ? "https://youtube.com/watch?v=... o Vimeo"
               : contentType === "file"
               ? "https://drive.google.com/file/..."
+              : contentType === "link"
+              ? "https://ejemplo.com/recurso"
               : "https://..."
           }
           className={inputClass}
@@ -222,24 +226,14 @@ export function AddContentForm({ plans, categories }: AddContentFormProps): Reac
           <p className="text-xs text-[#EF4444] mt-1">{errors.media_url.message}</p>
         )}
 
-        {/* Preview de YouTube — aparece cuando se detecta una URL válida de YouTube */}
-        {contentType === "video" && ytVideoId ? (
-          <div className="mt-2 rounded-lg overflow-hidden border border-[#1e1e1e]">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={`https://img.youtube.com/vi/${ytVideoId}/mqdefault.jpg`}
-              alt="YouTube preview"
-              className="w-full h-[100px] object-cover bg-[#1a1a1a]"
-            />
-            <div className="px-3 py-2 bg-[#111]">
-              <p className="text-[11px] text-[#666]">
-                Preview de YouTube · ID: {ytVideoId}
-              </p>
-            </div>
+        {/* Preview de video embebido (YouTube / Vimeo) */}
+        {contentType === "video" && mediaUrl && (mediaUrl.includes("youtube") || mediaUrl.includes("youtu.be") || mediaUrl.includes("vimeo")) ? (
+          <div className="mt-2 rounded-xl overflow-hidden border border-[#1e1e1e]">
+            <VideoEmbed url={mediaUrl} title="Preview" />
           </div>
         ) : contentType === "video" && (
           <div className="mt-2 h-8 bg-[#0d0d0d] border border-dashed border-[#1e1e1e] rounded-lg flex items-center justify-center">
-            <p className="text-[10px] text-[#333]">El preview aparecerá al ingresar una URL de YouTube</p>
+            <p className="text-[10px] text-[#333]">El preview aparecerá al ingresar una URL de YouTube o Vimeo</p>
           </div>
         )}
       </div>
@@ -286,7 +280,7 @@ export function AddContentForm({ plans, categories }: AddContentFormProps): Reac
           <p className="text-xs text-[#EF4444] mt-1">{errors.thumbnail_url.message}</p>
         )}
         {contentType === "video" && ytVideoId && (
-          <p className="text-[10px] text-[#444] mt-1">Auto-rellenado con el thumbnail de YouTube</p>
+          <p className="text-[10px] text-[#444] mt-1">Auto-rellenado con el thumbnail de YouTube · puedes sobreescribirlo</p>
         )}
       </div>
 
@@ -351,6 +345,21 @@ export function AddContentForm({ plans, categories }: AddContentFormProps): Reac
           </p>
         </div>
       )}
+
+      {/* ── Orden de aparición ── */}
+      <div className="mb-4">
+        <label className={labelClass}>Orden de aparición</label>
+        <Input
+          type="number"
+          min={0}
+          placeholder="0"
+          className={inputClass + " w-28"}
+          {...register("sort_order", { valueAsNumber: true })}
+        />
+        <p className="text-[10px] text-[#444] mt-1">
+          Número más bajo = aparece primero en la biblioteca
+        </p>
+      </div>
 
       {/* ── Toggle publicar ── */}
       <div className="flex items-center justify-between px-3.5 py-3 bg-[#111] border border-[#1a1a1a] rounded-xl mb-6">

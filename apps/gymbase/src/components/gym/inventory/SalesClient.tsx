@@ -1,4 +1,4 @@
-// SalesClient.tsx — Tabla interactiva de ventas con filtros y expandir detalle de items
+// SalesClient.tsx — Tabla interactiva de ventas con paginación URL-driven y expandir detalle de items
 
 "use client";
 
@@ -6,7 +6,9 @@ import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown, ChevronUp, ShoppingCart } from "lucide-react";
 import { RegisterSaleModal } from "./RegisterSaleModal";
+import { Pagination } from "@/components/shared/Pagination";
 import type { Sale, SalePaymentMethod, InventoryProduct } from "@/types/gym-inventory";
+import type { PaginatedResult } from "@core/types/pagination";
 
 const METHOD_LABELS: Record<SalePaymentMethod, string> = {
   cash:  "Efectivo",
@@ -22,7 +24,7 @@ interface Member {
 }
 
 interface SalesClientProps {
-  sales: Sale[];
+  result: PaginatedResult<Sale>;
   products: InventoryProduct[];
   members: Member[];
 }
@@ -38,10 +40,14 @@ function formatDate(iso: string): string {
   });
 }
 
-export function SalesClient({ sales, products, members }: SalesClientProps): React.ReactNode {
+export function SalesClient({ result, products, members }: SalesClientProps): React.ReactNode {
   const router = useRouter();
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+
+  const { data: sales, total, page, pageSize, totalPages } = result;
+  const from = (page - 1) * pageSize + 1;
+  const to = Math.min(page * pageSize, total);
 
   const handleModalClose = () => {
     setModalOpen(false);
@@ -52,7 +58,7 @@ export function SalesClient({ sales, products, members }: SalesClientProps): Rea
     <>
       {/* Barra de acciones */}
       <div className="flex items-center justify-between mb-4">
-        <p className="text-xs text-[#555]">{sales.length} venta{sales.length !== 1 ? "s" : ""}</p>
+        <p className="text-xs text-[#555]">{total} venta{total !== 1 ? "s" : ""}</p>
         <button
           type="button"
           onClick={() => setModalOpen(true)}
@@ -65,7 +71,7 @@ export function SalesClient({ sales, products, members }: SalesClientProps): Rea
       </div>
 
       {/* Tabla de ventas */}
-      {sales.length === 0 ? (
+      {total === 0 ? (
         <div className="text-center py-16 rounded-2xl" style={{ backgroundColor: "#0D0D0D", border: "1px solid #1e1e1e" }}>
           <ShoppingCart className="w-10 h-10 text-[#333] mx-auto mb-3" />
           <p className="text-[#444] text-sm mb-3">No hay ventas en este período.</p>
@@ -78,6 +84,7 @@ export function SalesClient({ sales, products, members }: SalesClientProps): Rea
           </button>
         </div>
       ) : (
+        <>
         <div className="rounded-2xl overflow-hidden" style={{ border: "1px solid #1e1e1e" }}>
           <table className="w-full">
             <thead>
@@ -90,7 +97,7 @@ export function SalesClient({ sales, products, members }: SalesClientProps): Rea
               </tr>
             </thead>
             <tbody>
-              {sales.map((sale, i) => {
+              {sales.map((sale) => {
                 const isExpanded = expandedId === sale.id;
                 const itemCount = sale.items?.length ?? 0;
 
@@ -160,7 +167,17 @@ export function SalesClient({ sales, products, members }: SalesClientProps): Rea
               })}
             </tbody>
           </table>
+
+          {/* Footer con conteo */}
+          <div className="px-4 py-2.5 border-t border-[#1a1a1a] bg-[#0a0a0a]">
+            <p className="text-[10px] text-[#444]">
+              Mostrando {from}–{to} de {total} venta{total !== 1 ? "s" : ""}
+            </p>
+          </div>
         </div>
+
+        <Pagination totalPages={totalPages} currentPage={page} />
+        </>
       )}
 
       <RegisterSaleModal

@@ -1,8 +1,9 @@
 // dashboard/page.tsx — Dashboard principal del owner con KPIs, cashflow y top productos
 
 import { Suspense } from "react";
-import { DollarSign, Users, Activity, Package } from "lucide-react";
+import { DollarSign, Users, Activity, TrendingDown } from "lucide-react";
 import { getOwnerDashboardStats, getCashFlow } from "@/actions/owner.actions";
+import { getExpenseStats } from "@/actions/expense.actions";
 import { StatCard } from "@/components/owner/StatCard";
 import { CashFlowChart } from "@/components/owner/CashFlowChart";
 import { PeriodSelector } from "@/components/owner/PeriodSelector";
@@ -34,9 +35,15 @@ export default async function OwnerDashboardPage({
   const period: OwnerPeriod =
     params.period === "week" || params.period === "year" ? params.period : "month";
 
-  const [statsResult, cashFlowResult] = await Promise.all([
+  // Calcular rango del mes actual para el KPI de gastos
+  const now = new Date();
+  const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+  const today = now.toISOString().split("T")[0];
+
+  const [statsResult, cashFlowResult, expenseStats] = await Promise.all([
     getOwnerDashboardStats(period),
     getCashFlow(period),
+    getExpenseStats({ startDate: monthStart, endDate: today }),
   ]);
 
   const stats = statsResult.success ? statsResult.data! : null;
@@ -89,10 +96,9 @@ export default async function OwnerDashboardPage({
           icon={<Activity size={16} />}
         />
         <StatCard
-          label="Stock bajo en inventario"
-          value={stats ? String(stats.inventory.low_stock_count) : "—"}
-          suffix="productos"
-          icon={<Package size={16} />}
+          label="Gastos del mes"
+          value={formatCurrency(expenseStats.total)}
+          icon={<TrendingDown size={16} />}
         />
       </div>
 

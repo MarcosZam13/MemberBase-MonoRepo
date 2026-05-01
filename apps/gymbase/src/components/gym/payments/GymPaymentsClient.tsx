@@ -1,17 +1,20 @@
-// GymPaymentsClient.tsx — Tabla de comprobantes de pago con tema oscuro y filtros de estado
+// GymPaymentsClient.tsx — Tabla de comprobantes de pago con paginación URL-driven y filtros de estado
 
 "use client";
 
-import { useState, useDeferredValue } from "react";
+import { useState, useDeferredValue, useCallback } from "react";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { Search, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { approvePayment, rejectPayment } from "@/actions/payment.actions";
 import { formatDate, formatPrice } from "@/lib/utils";
+import { Pagination } from "@/components/shared/Pagination";
 import type { PaymentProofWithDetails } from "@/types/database";
+import type { PaginatedResult } from "@core/types/pagination";
+import type { PaymentStatusFilter } from "@/actions/payment.actions";
 
 type PaymentStatus = "pending" | "approved" | "rejected";
 
-// Genera iniciales y color de avatar a partir del ID
 function avatarColor(id: string): { bg: string; text: string } {
   const P = [
     { bg: "#1e0f06", text: "#FF5E14" },
@@ -29,9 +32,7 @@ function initials(name: string | null | undefined): string {
   return p.length >= 2 ? `${p[0][0]}${p[p.length - 1][0]}`.toUpperCase() : name.slice(0, 2).toUpperCase();
 }
 
-type FilterStatus = "all" | "pending" | "approved" | "rejected";
-
-const STATUS_LABEL: Record<FilterStatus, string> = {
+const STATUS_LABEL: Record<PaymentStatusFilter, string> = {
   all: "Todos",
   pending: "Pendientes",
   approved: "Aprobados",
@@ -45,14 +46,23 @@ const STATUS_BADGE: Record<PaymentStatus, { label: string; cls: string }> = {
 };
 
 interface GymPaymentsClientProps {
-  initialPayments: PaymentProofWithDetails[];
+  result: PaginatedResult<PaymentProofWithDetails>;
+  pendingCount: number;
+  currentStatus: PaymentStatusFilter;
   // Slot para inyectar el dialog de pago manual desde el servidor (evita prop drilling de data)
   manualPaymentSlot?: React.ReactNode;
 }
 
-export function GymPaymentsClient({ initialPayments, manualPaymentSlot }: GymPaymentsClientProps): React.ReactNode {
-  const [payments, setPayments] = useState<PaymentProofWithDetails[]>(initialPayments);
-  const [filter, setFilter] = useState<FilterStatus>("all");
+export function GymPaymentsClient({
+  result,
+  pendingCount,
+  currentStatus,
+  manualPaymentSlot,
+}: GymPaymentsClientProps): React.ReactNode {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
   const [query, setQuery] = useState("");
   const [viewingProof, setViewingProof] = useState<PaymentProofWithDetails | null>(null);
   const [rejectingProof, setRejectingProof] = useState<PaymentProofWithDetails | null>(null);
@@ -60,31 +70,41 @@ export function GymPaymentsClient({ initialPayments, manualPaymentSlot }: GymPay
   const [isPending, setIsPending] = useState(false);
   const deferredQuery = useDeferredValue(query);
 
-  const filtered = payments.filter((p) => {
-    if (filter !== "all" && p.status !== filter) return false;
-    if (deferredQuery.trim()) {
-      const q = deferredQuery.toLowerCase();
-      return (
-        p.profile?.full_name?.toLowerCase().includes(q) ||
-        p.profile?.email?.toLowerCase().includes(q)
-      );
+  // Navega a nueva URL con params actualizados — resetea a página 1 al cambiar filtros
+  const navigate = useCallback((updates: Record<string, string>): void => {
+    const p = new URLSearchParams(searchParams.toString());
+    for (const [k, v] of Object.entries(updates)) {
+      if (v) p.set(k, v); else p.delete(k);
     }
-    return true;
-  });
+    p.delete("page");
+    router.push(`${pathname}?${p.toString()}`);
+  }, [router, pathname, searchParams]);
 
-  const pendingCount = payments.filter((p) => p.status === "pending").length;
+  const { data: payments, total, page, pageSize, totalPages } = result;
+  const from = (page - 1) * pageSize + 1;
+  const to = Math.min(page * pageSize, total);
+
+  // Búsqueda client-side dentro de la página actual — el filtro de estado es server-side
+  const filtered = deferredQuery.trim()
+    ? payments.filter((p) => {
+        const q = deferredQuery.toLowerCase();
+        return (
+          p.profile?.full_name?.toLowerCase().includes(q) ||
+          p.profile?.email?.toLowerCase().includes(q)
+        );
+      })
+    : payments;
 
   async function handleApprove(proof: PaymentProofWithDetails): Promise<void> {
     setIsPending(true);
-    const result = await approvePayment({ payment_id: proof.id, subscription_id: proof.subscription_id });
+    const res = await approvePayment({ payment_id: proof.id, subscription_id: proof.subscription_id });
     setIsPending(false);
-    if (result.success) {
+    if (res.success) {
       toast.success("Pago aprobado — membresía activada");
-      // Actualizar estado localmente en lugar de remover (para que aparezca en "Aprobados")
-      setPayments((prev) => prev.map((p) => p.id === proof.id ? { ...p, status: "approved" as PaymentStatus } : p));
       setViewingProof(null);
+      router.refresh();
     } else {
-      toast.error(typeof result.error === "string" ? result.error : "Error al aprobar");
+      toast.error(typeof res.error === "string" ? res.error : "Error al aprobar");
     }
   }
 
@@ -94,20 +114,20 @@ export function GymPaymentsClient({ initialPayments, manualPaymentSlot }: GymPay
       return;
     }
     setIsPending(true);
-    const result = await rejectPayment({
+    const res = await rejectPayment({
       payment_id: rejectingProof.id,
       subscription_id: rejectingProof.subscription_id,
       rejection_reason: rejectionReason.trim(),
     });
     setIsPending(false);
-    if (result.success) {
+    if (res.success) {
       toast.success("Pago rechazado");
-      setPayments((prev) => prev.map((p) => p.id === rejectingProof.id ? { ...p, status: "rejected" as PaymentStatus } : p));
       setRejectingProof(null);
       setRejectionReason("");
       setViewingProof(null);
+      router.refresh();
     } else {
-      toast.error(typeof result.error === "string" ? result.error : "Error al rechazar");
+      toast.error(typeof res.error === "string" ? res.error : "Error al rechazar");
     }
   }
 
@@ -138,14 +158,14 @@ export function GymPaymentsClient({ initialPayments, manualPaymentSlot }: GymPay
           </div>
         </div>
 
-        {/* Chips de filtro */}
+        {/* Chips de filtro estado — URL-driven */}
         <div className="flex gap-2">
-          {(["all", "pending", "approved", "rejected"] as FilterStatus[]).map((f) => (
+          {(["all", "pending", "approved", "rejected"] as PaymentStatusFilter[]).map((f) => (
             <button
               key={f}
-              onClick={() => setFilter(f)}
-              className={`h-7 px-3 rounded-full text-[11px] font-medium border transition-all ${
-                filter === f
+              onClick={() => navigate({ status: f })}
+              className={`h-7 px-3 rounded-full text-[11px] font-medium border transition-all cursor-pointer ${
+                currentStatus === f
                   ? "bg-[rgba(255,94,20,0.12)] border-[rgba(255,94,20,0.4)] text-[#FF5E14]"
                   : "bg-[#111] border-[#222] text-[#666] hover:border-[#333]"
               }`}
@@ -171,7 +191,7 @@ export function GymPaymentsClient({ initialPayments, manualPaymentSlot }: GymPay
               {filtered.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="text-center py-12 text-[#444] text-sm">
-                    No hay comprobantes con este filtro
+                    {deferredQuery ? "No se encontraron comprobantes con esa búsqueda" : "No hay comprobantes con este filtro"}
                   </td>
                 </tr>
               ) : (
@@ -259,7 +279,7 @@ export function GymPaymentsClient({ initialPayments, manualPaymentSlot }: GymPay
                           </div>
                         ) : (
                           <span className="text-[11px] text-[#444]">
-                            {proof.status === "approved" ? "Aprobado" : `Rechazado`}
+                            {proof.status === "approved" ? "Aprobado" : "Rechazado"}
                           </span>
                         )}
                       </td>
@@ -269,7 +289,18 @@ export function GymPaymentsClient({ initialPayments, manualPaymentSlot }: GymPay
               )}
             </tbody>
           </table>
+
+          {/* Footer con conteo */}
+          <div className="px-4 py-2.5 border-t border-[#111] bg-[#0a0a0a]">
+            <p className="text-[10px] text-[#444]">
+              {total > 0
+                ? `Mostrando ${from}–${to} de ${total} comprobante${total !== 1 ? "s" : ""}`
+                : "Sin resultados"}
+            </p>
+          </div>
         </div>
+
+        <Pagination totalPages={totalPages} currentPage={page} />
       </div>
 
       {/* Modal: ver comprobante */}
@@ -365,9 +396,7 @@ export function GymPaymentsClient({ initialPayments, manualPaymentSlot }: GymPay
           >
             <div className="px-5 py-4 border-b border-[#1a1a1a]">
               <p className="text-sm font-semibold text-white">Rechazar comprobante</p>
-              <p className="text-xs text-[#555] mt-0.5">
-                El cliente verá este motivo en su portal
-              </p>
+              <p className="text-xs text-[#555] mt-0.5">El cliente verá este motivo en su portal</p>
             </div>
             <div className="p-5 space-y-3">
               <label className="text-[10px] font-semibold text-[#666] uppercase tracking-[0.08em] block">

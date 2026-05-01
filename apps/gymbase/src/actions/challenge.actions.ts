@@ -5,10 +5,16 @@
 import { revalidatePath } from "next/cache";
 import { createClient, getCurrentUser, getOrgId } from "@/lib/supabase/server";
 import {
-  fetchChallenges, fetchChallengeById, insertChallenge,
-  fetchParticipants, fetchParticipantCount, insertParticipant,
-  fetchMyParticipation, insertChallengeProgress, fetchChallengeProgressTotal,
+  fetchChallenges,
+  fetchChallengeById,
+  insertChallenge,
+  fetchParticipantsWithProgress,
+  insertParticipant,
+  fetchMyParticipation,
+  insertChallengeProgress,
   fetchMyBadges,
+  fetchAllMyParticipations,
+  insertBadge,
 } from "@/services/challenge.service";
 import { createChallengeSchema, logChallengeProgressSchema } from "@/lib/validations/challenges";
 import type { ActionResult } from "@/types/database";
@@ -20,15 +26,8 @@ export async function getChallenges(): Promise<Challenge[]> {
   const supabase = await createClient();
   try {
     const orgId = await getOrgId();
-    const challenges = await fetchChallenges(supabase, orgId);
-    // Agregar conteo de participantes
-    const withCounts = await Promise.all(
-      challenges.map(async (c) => {
-        const count = await fetchParticipantCount(supabase, c.id);
-        return { ...c, participants_count: count };
-      })
-    );
-    return withCounts;
+    // fetchChallenges ya incluye conteo de participantes sin N+1
+    return await fetchChallenges(supabase, orgId);
   } catch (error) {
     console.error("[getChallenges] Error:", error);
     return [];
@@ -45,38 +44,60 @@ export async function getChallengeDetail(challengeId: string): Promise<{
   if (!user) return { challenge: null, participants: [], myParticipation: null, myProgress: 0 };
   const supabase = await createClient();
   try {
+    // Usa fetchParticipantsWithProgress — 1 query con progreso embebido (sin N+1)
     const [challenge, participants] = await Promise.all([
       fetchChallengeById(supabase, challengeId),
-      fetchParticipants(supabase, challengeId),
+      fetchParticipantsWithProgress(supabase, challengeId),
     ]);
-    const myParticipation = await fetchMyParticipation(supabase, challengeId, user.id);
-    let myProgress = 0;
-    if (myParticipation) {
-      myProgress = await fetchChallengeProgressTotal(supabase, myParticipation.id);
-    }
-    // Agregar progreso total a cada participante
-    const withProgress = await Promise.all(
-      participants.map(async (p) => {
-        const total = await fetchChallengeProgressTotal(supabase, p.id);
-        return { ...p, total_progress: total };
-      })
+
+    const myParticipation = participants.find((p) => p.user_id === user.id) ?? null;
+    const myProgress = myParticipation?.total_progress ?? 0;
+
+    // Ordenar por progreso descendente para el ranking
+    const sorted = [...participants].sort(
+      (a, b) => (b.total_progress ?? 0) - (a.total_progress ?? 0)
     );
-    return { challenge, participants: withProgress, myParticipation, myProgress };
+
+    return { challenge, participants: sorted, myParticipation, myProgress };
   } catch (error) {
     console.error("[getChallengeDetail] Error:", error);
     return { challenge: null, participants: [], myParticipation: null, myProgress: 0 };
   }
 }
 
+// Obtiene datos de todos los retos del usuario en un solo batch — usado en portal/challenges/page
+export async function getMyAllChallengeData(): Promise<Map<string, { joined: boolean; progress: number }>> {
+  const user = await getCurrentUser();
+  if (!user) return new Map();
+  const supabase = await createClient();
+  try {
+    const participations = await fetchAllMyParticipations(supabase, user.id);
+    const map = new Map<string, { joined: boolean; progress: number }>();
+    for (const p of participations) {
+      map.set(p.challenge_id, { joined: true, progress: p.total_progress ?? 0 });
+    }
+    return map;
+  } catch (error) {
+    console.error("[getMyAllChallengeData] Error:", error);
+    return new Map();
+  }
+}
+
 export async function createChallenge(input: unknown): Promise<ActionResult<Challenge>> {
   const user = await getCurrentUser();
-  if (!user || user.role !== "admin") return { success: false, error: "Sin permisos" };
+  if (!user || user.role !== "admin" && user.role !== "owner") return { success: false, error: "Sin permisos" };
   const parsed = createChallengeSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.flatten().fieldErrors };
   const supabase = await createClient();
   try {
     const orgId = await getOrgId();
-    const challenge = await insertChallenge(supabase, orgId, user.id, parsed.data);
+    const challenge = await insertChallenge(supabase, orgId, user.id, {
+      ...parsed.data,
+      banner_url: parsed.data.banner_url || null,
+      exercise_id: parsed.data.exercise_id ?? null,
+      target_routine_id: parsed.data.target_routine_id ?? null,
+      weight_loss_mode: parsed.data.weight_loss_mode ?? "absolute",
+    });
     revalidatePath("/admin/challenges");
     revalidatePath("/portal/challenges");
     return { success: true, data: challenge };
@@ -92,15 +113,21 @@ export async function joinChallenge(challengeId: string): Promise<ActionResult<C
   const supabase = await createClient();
   try {
     const orgId = await getOrgId();
-    // Verificar que no esté inscrito ya
     const existing = await fetchMyParticipation(supabase, challengeId, user.id);
     if (existing) return { success: false, error: "Ya estás inscrito en este reto" };
-    // Verificar capacidad
     const challenge = await fetchChallengeById(supabase, challengeId);
     if (!challenge) return { success: false, error: "Reto no encontrado" };
+    // Verificar capacidad
     if (challenge.max_participants) {
-      const count = await fetchParticipantCount(supabase, challengeId);
-      if (count >= challenge.max_participants) return { success: false, error: "El reto está lleno" };
+      const supabaseCount = await createClient();
+      const { count } = await (await supabaseCount)
+        .from("gym_challenge_participants")
+        .select("id", { count: "exact", head: true })
+        .eq("challenge_id", challengeId)
+        .neq("status", "withdrawn");
+      if ((count ?? 0) >= challenge.max_participants) {
+        return { success: false, error: "El reto está lleno" };
+      }
     }
     const participant = await insertParticipant(supabase, challengeId, user.id, orgId);
     revalidatePath(`/portal/challenges/${challengeId}`);
@@ -139,5 +166,25 @@ export async function getMyBadges(): Promise<ChallengeBadge[]> {
   } catch (error) {
     console.error("[getMyBadges] Error:", error);
     return [];
+  }
+}
+
+// Solo admin puede otorgar badges manualmente desde el ranking
+export async function awardBadge(
+  userId: string,
+  challengeId: string,
+  type: ChallengeBadge["type"]
+): Promise<ActionResult<ChallengeBadge>> {
+  const admin = await getCurrentUser();
+  if (!admin || admin.role !== "admin" && admin.role !== "owner") return { success: false, error: "Sin permisos" };
+  const supabase = await createClient();
+  try {
+    const orgId = await getOrgId();
+    const badge = await insertBadge(supabase, userId, orgId, challengeId, type);
+    revalidatePath(`/admin/challenges/${challengeId}`);
+    return { success: true, data: badge };
+  } catch (error) {
+    console.error("[awardBadge] Error:", error);
+    return { success: false, error: "Error al otorgar el badge (puede que ya exista)" };
   }
 }

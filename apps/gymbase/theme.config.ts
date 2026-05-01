@@ -64,7 +64,7 @@ export const themeConfig = {
     // Módulo 8 — Inventario de productos del gym
     gym_inventory: true,
     // Módulo 9 — Marketplace / Tienda para miembros
-    gym_marketplace: false,
+    gym_marketplace: true,
     // Módulo 10 — Dashboard financiero exclusivo para el rol 'owner'
     gym_accounting: true,
   },

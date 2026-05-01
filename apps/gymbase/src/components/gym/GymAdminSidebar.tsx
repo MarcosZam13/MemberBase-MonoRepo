@@ -22,6 +22,8 @@ import {
   Zap,
   Package,
   ShoppingCart,
+  ShieldCheck,
+  HeartPulse,
 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
@@ -35,6 +37,7 @@ interface NavItem {
   flag?: keyof typeof themeConfig.features;
   badge?: number;
   badgeNode?: React.ReactNode;
+  ownerOnly?: boolean;
 }
 
 interface NavSection {
@@ -44,6 +47,7 @@ interface NavSection {
 
 interface GymAdminSidebarProps {
   inventoryBadgeCount?: number;
+  userRole?: string;
 }
 
 // Secciones de navegación — agrupadas por dominio funcional
@@ -59,6 +63,7 @@ function buildNavSections(inventoryBadgeCount = 0): NavSection[] {
     label: "Gestión",
     items: [
       { href: "/admin/members",   label: "Miembros",   icon: Users },
+      { href: "/admin/health",    label: "Salud",      icon: HeartPulse, flag: "gym_health_metrics" },
       { href: "/admin/content",   label: "Contenido",  icon: BookOpen },
       { href: "/admin/community", label: "Comunidad",  icon: MessageSquare, flag: "community" },
       { href: "/admin/routines",  label: "Rutinas",    icon: Dumbbell,      flag: "gym_routines" },
@@ -91,10 +96,11 @@ function buildNavSections(inventoryBadgeCount = 0): NavSection[] {
   ]
 }
 
-export function GymAdminSidebar({ inventoryBadgeCount = 0 }: GymAdminSidebarProps): React.ReactNode {
+export function GymAdminSidebar({ inventoryBadgeCount = 0, userRole }: GymAdminSidebarProps): React.ReactNode {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const NAV_SECTIONS = buildNavSections(inventoryBadgeCount);
+  const isOwner = userRole === "owner";
 
   const isActive = (href: string): boolean => {
     if (href === "/admin") return pathname === "/admin";
@@ -104,6 +110,8 @@ export function GymAdminSidebar({ inventoryBadgeCount = 0 }: GymAdminSidebarProp
   const renderNavItem = (item: NavItem) => {
     // Ocultar si el feature flag está desactivado
     if (item.flag && !themeConfig.features[item.flag]) return null;
+    // Ocultar ítems exclusivos del owner si el usuario no tiene ese rol
+    if (item.ownerOnly && !isOwner) return null;
 
     const active = isActive(item.href);
 
@@ -160,7 +168,9 @@ export function GymAdminSidebar({ inventoryBadgeCount = 0 }: GymAdminSidebarProp
         {NAV_SECTIONS.map((section) => {
           // Filtrar items sin feature flag o con flag activo
           const visibleItems = section.items.filter(
-            (item) => !item.flag || themeConfig.features[item.flag]
+            (item) =>
+              (!item.flag || themeConfig.features[item.flag]) &&
+              (!item.ownerOnly || isOwner)
           );
           if (visibleItems.length === 0) return null;
 
@@ -190,6 +200,28 @@ export function GymAdminSidebar({ inventoryBadgeCount = 0 }: GymAdminSidebarProp
             {themeConfig.brand.tagline}
           </p>
         </div>
+
+        {/* Acceso rápido al portal del owner — solo visible para owners */}
+        {isOwner && (
+          <Link
+            href="/owner/dashboard"
+            onClick={() => setMobileOpen(false)}
+            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors"
+            style={{ color: "var(--gym-text-muted)", borderLeft: "3px solid transparent" }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLElement).style.color = "#FF5E14";
+              (e.currentTarget as HTMLElement).style.backgroundColor = "#FF5E1415";
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLElement).style.color = "var(--gym-text-muted)";
+              (e.currentTarget as HTMLElement).style.backgroundColor = "transparent";
+            }}
+          >
+            <ShieldCheck className="w-4 h-4 shrink-0" />
+            Portal Owner
+          </Link>
+        )}
+
         <form action={signOut}>
           <button
             type="submit"

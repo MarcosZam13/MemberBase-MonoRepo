@@ -2,7 +2,7 @@
 
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { createClient, getCurrentUser } from "@/lib/supabase/server";
 import { createPlanSchema, updatePlanSchema } from "@/lib/validations/membership";
 import type { ActionResult, MembershipPlan } from "@/types/database";
@@ -38,7 +38,7 @@ export async function getPlans(onlyActive = false): Promise<MembershipPlan[]> {
 export async function createPlan(formData: unknown): Promise<ActionResult<MembershipPlan>> {
   const user = await getCurrentUser();
   if (!user) return { success: false, error: "No autenticado" };
-  if (user.role !== "admin") return { success: false, error: "Sin permisos" };
+  if (user.role !== "admin" && user.role !== "owner") return { success: false, error: "Sin permisos" };
 
   const parsed = createPlanSchema.safeParse(formData);
   if (!parsed.success) {
@@ -68,6 +68,7 @@ export async function createPlan(formData: unknown): Promise<ActionResult<Member
 
   revalidatePath("/admin/plans");
   revalidatePath("/portal/plans");
+  revalidateTag("membership-plans", {});
   return { success: true, data: { ...data, features: Array.isArray(data.features) ? data.features : [] } };
 }
 
@@ -75,7 +76,7 @@ export async function createPlan(formData: unknown): Promise<ActionResult<Member
 export async function updatePlan(formData: unknown): Promise<ActionResult> {
   const user = await getCurrentUser();
   if (!user) return { success: false, error: "No autenticado" };
-  if (user.role !== "admin") return { success: false, error: "Sin permisos" };
+  if (user.role !== "admin" && user.role !== "owner") return { success: false, error: "Sin permisos" };
 
   const parsed = updatePlanSchema.safeParse(formData);
   if (!parsed.success) {
@@ -100,6 +101,7 @@ export async function updatePlan(formData: unknown): Promise<ActionResult> {
 
   revalidatePath("/admin/plans");
   revalidatePath("/portal/plans");
+  revalidateTag("membership-plans", {});
   return { success: true };
 }
 
@@ -107,7 +109,7 @@ export async function updatePlan(formData: unknown): Promise<ActionResult> {
 export async function togglePlanStatus(planId: string, isActive: boolean): Promise<ActionResult> {
   const user = await getCurrentUser();
   if (!user) return { success: false, error: "No autenticado" };
-  if (user.role !== "admin") return { success: false, error: "Sin permisos" };
+  if (user.role !== "admin" && user.role !== "owner") return { success: false, error: "Sin permisos" };
 
   const supabase = await createClient();
   const { error } = await supabase
@@ -122,5 +124,6 @@ export async function togglePlanStatus(planId: string, isActive: boolean): Promi
 
   revalidatePath("/admin/plans");
   revalidatePath("/portal/plans");
+  revalidateTag("membership-plans", {});
   return { success: true };
 }

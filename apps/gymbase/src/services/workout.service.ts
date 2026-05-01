@@ -8,6 +8,8 @@ import type {
   WorkoutExercisesDone,
   PersonalRecord,
   PRResult,
+  OneRepMaxTest,
+  ExerciseProgressPoint,
 } from "@/types/gym-routines";
 
 /* ── Helpers de tipo ─────────────────────────────────────────────────────────── */
@@ -264,6 +266,108 @@ export async function updatePersonalRecords(
   }
 
   return newPRs;
+}
+
+/* ── 1RM Tests ───────────────────────────────────────────────────────────────── */
+
+// Extrae la progresión de pesos de un ejercicio específico escaneando los workout_logs del usuario
+// Retorna los puntos de la serie de tiempo ordenados cronológicamente para graficar
+export async function getExerciseWeightHistory(
+  supabase: SupabaseClient,
+  userId: string,
+  exerciseId: string,
+  limit = 30
+): Promise<ExerciseProgressPoint[]> {
+  // Traemos más de lo necesario porque no todos los logs contienen el ejercicio buscado
+  const { data, error } = await supabase
+    .from("gym_workout_logs")
+    .select("exercises_done, completed_at")
+    .eq("user_id", userId)
+    .order("completed_at", { ascending: true })
+    .limit(limit * 4);
+
+  if (error) throw new Error(error.message);
+
+  const points: ExerciseProgressPoint[] = [];
+
+  for (const log of (data ?? [])) {
+    const done = log.exercises_done as WorkoutExercisesDone | null;
+    const occurrences = done?.exercises?.filter((e) => e.exercise_id === exerciseId) ?? [];
+    if (occurrences.length === 0) continue;
+
+    // Si el ejercicio aparece varias veces en la misma sesión (pirámide), tomar el mejor peso
+    let sessionMax = 0;
+    let totalSets  = 0;
+    for (const occ of occurrences) {
+      const completed = occ.sets.filter((s) => s.completed && s.weight_kg != null);
+      totalSets += completed.length;
+      const occMax = completed.length > 0 ? Math.max(...completed.map((s) => s.weight_kg!)) : 0;
+      if (occMax > sessionMax) sessionMax = occMax;
+    }
+    if (sessionMax === 0) continue;
+
+    const dt = new Date(log.completed_at as string);
+    const dd = dt.getDate().toString().padStart(2, "0");
+    const mm = (dt.getMonth() + 1).toString().padStart(2, "0");
+
+    points.push({
+      date:       `${dd}/${mm}`,
+      full_date:  log.completed_at as string,
+      max_weight: sessionMax,
+      sets_count: totalSets,
+    });
+
+    if (points.length >= limit) break;
+  }
+
+  return points;
+}
+
+// Inserta un test de 1RM registrado manualmente por el miembro
+export async function insertOneRepMaxTest(
+  supabase: SupabaseClient,
+  userId: string,
+  orgId: string,
+  data: { exercise_id: string; weight_kg: number; notes?: string }
+): Promise<OneRepMaxTest> {
+  const { data: test, error } = await supabase
+    .from("gym_one_rep_max_tests")
+    .insert({
+      user_id:     userId,
+      org_id:      orgId,
+      exercise_id: data.exercise_id,
+      weight_kg:   data.weight_kg,
+      notes:       data.notes ?? null,
+      tested_at:   new Date().toISOString(),
+    })
+    .select("id, user_id, org_id, exercise_id, weight_kg, notes, tested_at")
+    .single();
+
+  if (error) throw new Error(error.message);
+  return test as OneRepMaxTest;
+}
+
+// Retorna el historial de tests de 1RM del miembro con join al nombre del ejercicio
+// exerciseId opcional: si se provee, filtra por ejercicio específico
+export async function fetchOneRepMaxHistory(
+  supabase: SupabaseClient,
+  userId: string,
+  exerciseId?: string
+): Promise<OneRepMaxTest[]> {
+  let query = supabase
+    .from("gym_one_rep_max_tests")
+    .select(`
+      id, user_id, org_id, exercise_id, weight_kg, notes, tested_at,
+      exercise:gym_exercises(name, muscle_group)
+    `)
+    .eq("user_id", userId)
+    .order("tested_at", { ascending: false });
+
+  if (exerciseId) query = query.eq("exercise_id", exerciseId);
+
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  return (data ?? []) as unknown as OneRepMaxTest[];
 }
 
 // Inserta el log de sesión completo y actualiza los PRs en una sola operación

@@ -47,6 +47,7 @@ export const createRoutineSchema = z.object({
     .max(7, "Máximo 7 días")
     .optional(),
   is_template: z.boolean().optional(),
+  is_default: z.boolean().optional(),
 });
 
 // Configuración de una serie individual para pirámides y variaciones de peso
@@ -185,6 +186,8 @@ export const createPrivateExerciseSchema = z.object({
   muscle_group: z.string().optional(),
   equipment: z.string().optional(),
   description: z.string().max(300).optional(),
+  // URL de video opcional — permite al miembro adjuntar un tutorial de referencia
+  video_url: z.string().url("URL de video inválida").optional().or(z.literal("")).transform((v) => v || undefined),
 });
 
 export type CreateMemberRoutineInput = z.infer<typeof createMemberRoutineSchema>;
@@ -192,6 +195,19 @@ export type UpdateMemberRoutineInput = z.infer<typeof updateMemberRoutineSchema>
 export type AddDayToMyRoutineInput = z.infer<typeof addDayToMyRoutineSchema>;
 export type AddExerciseToMyDayInput = z.infer<typeof addExerciseToMyDaySchema>;
 export type CreatePrivateExerciseInput = z.infer<typeof createPrivateExerciseSchema>;
+
+// ── Schema para tests de 1RM ─────────────────────────────────────────────────
+
+export const logOneRepMaxSchema = z.object({
+  exercise_id: z.string().uuid("ID de ejercicio inválido"),
+  weight_kg: z
+    .number()
+    .positive("El peso debe ser mayor a 0")
+    .max(500, "Peso máximo: 500 kg"),
+  notes: z.string().max(300, "Máximo 300 caracteres").optional(),
+});
+
+export type LogOneRepMaxInput = z.infer<typeof logOneRepMaxSchema>;
 
 export type CreateExerciseInput = z.infer<typeof createExerciseSchema>;
 export type CreateRoutineInput = z.infer<typeof createRoutineSchema>;

@@ -10,10 +10,13 @@ import {
   getLastSessionForDay,
   getMemberPRs,
   saveWorkoutSession,
+  getExerciseWeightHistory,
+  insertOneRepMaxTest,
+  fetchOneRepMaxHistory,
 } from "@/services/workout.service";
-import { logWorkoutSchema, completeWorkoutSessionSchema } from "@/lib/validations/routines";
+import { logWorkoutSchema, completeWorkoutSessionSchema, logOneRepMaxSchema } from "@/lib/validations/routines";
 import type { ActionResult } from "@/types/database";
-import type { WorkoutLog, PersonalRecord, PRResult } from "@/types/gym-routines";
+import type { WorkoutLog, PersonalRecord, PRResult, OneRepMaxTest, ExerciseProgressPoint } from "@/types/gym-routines";
 
 /* ── Actions originales (se mantienen para compatibilidad) ───────────────────── */
 
@@ -117,6 +120,86 @@ export async function completeWorkoutSession(
   } catch (error) {
     console.error("[completeWorkoutSession] Error:", error);
     return { success: false, error: "Error al guardar la sesión" };
+  }
+}
+
+/* ── 1RM y progresión por ejercicio ─────────────────────────────────────────── */
+
+// Retorna la progresión de pesos de un ejercicio para el miembro autenticado
+// Extrae los datos de los workout_logs existentes — no requiere tabla nueva
+export async function getMyExerciseProgress(exerciseId: string): Promise<ExerciseProgressPoint[]> {
+  const user = await getCurrentUser();
+  if (!user) return [];
+  const supabase = await createClient();
+  try {
+    return await getExerciseWeightHistory(supabase, user.id, exerciseId);
+  } catch (error) {
+    console.error("[getMyExerciseProgress] Error:", error);
+    return [];
+  }
+}
+
+// Registra un test de 1RM del miembro autenticado
+export async function logMyOneRepMax(input: unknown): Promise<ActionResult<OneRepMaxTest>> {
+  const user = await getCurrentUser();
+  if (!user) return { success: false, error: "No autenticado" };
+
+  const parsed = logOneRepMaxSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.flatten().fieldErrors };
+
+  const supabase = await createClient();
+  try {
+    const orgId = await getOrgId();
+    const test = await insertOneRepMaxTest(supabase, user.id, orgId, parsed.data);
+    revalidatePath("/portal/routines/strength");
+    return { success: true, data: test };
+  } catch (error) {
+    console.error("[logMyOneRepMax] Error:", error);
+    return { success: false, error: "Error al guardar el test" };
+  }
+}
+
+// Retorna el historial de tests de 1RM del miembro — opcionalmente filtrado por ejercicio
+export async function getMyOneRepMaxHistory(exerciseId?: string): Promise<OneRepMaxTest[]> {
+  const user = await getCurrentUser();
+  if (!user) return [];
+  const supabase = await createClient();
+  try {
+    return await fetchOneRepMaxHistory(supabase, user.id, exerciseId);
+  } catch (error) {
+    console.error("[getMyOneRepMaxHistory] Error:", error);
+    return [];
+  }
+}
+
+// Retorna los PRs del miembro autenticado — para la vista "Mi Rendimiento" en el portal
+export async function getMyPRs(): Promise<PersonalRecord[]> {
+  const user = await getCurrentUser();
+  if (!user) return [];
+  const supabase = await createClient();
+  try {
+    return await getMemberPRs(supabase, user.id);
+  } catch (error) {
+    console.error("[getMyPRs] Error:", error);
+    return [];
+  }
+}
+
+// Retorna los N PRs más altos del miembro autenticado, ordenados por peso máximo descendente
+// Usado en /portal/progress para el widget "Mis mejores marcas"
+export async function getMyTopPRs(limit = 6): Promise<PersonalRecord[]> {
+  const user = await getCurrentUser();
+  if (!user) return [];
+  const supabase = await createClient();
+  try {
+    const prs = await getMemberPRs(supabase, user.id);
+    return [...prs]
+      .filter((pr) => pr.max_weight != null)
+      .sort((a, b) => (b.max_weight ?? 0) - (a.max_weight ?? 0))
+      .slice(0, limit);
+  } catch (error) {
+    console.error("[getMyTopPRs] Error:", error);
+    return [];
   }
 }
 

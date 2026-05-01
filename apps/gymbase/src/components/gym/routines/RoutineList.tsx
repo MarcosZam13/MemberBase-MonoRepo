@@ -7,6 +7,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Trash2, Pencil, Dumbbell, Loader2, Calendar, Clock } from "lucide-react";
 import { removeRoutine } from "@/actions/routine.actions";
+import { toOpaqueId } from "@/lib/utils/opaque-id";
 import type { Routine } from "@/types/gym-routines";
 
 interface RoutineListProps {
@@ -45,7 +46,7 @@ export function RoutineList({ routines }: RoutineListProps): React.ReactNode {
       {routines.map((routine) => (
         <Link
           key={routine.id}
-          href={`/admin/routines/${routine.id}`}
+          href={`/admin/routines/${toOpaqueId(routine.id)}`}
           className="group block rounded-xl border border-border bg-card hover:border-primary/40 hover:bg-card/80 transition-all overflow-hidden"
         >
           {/* Barra de acento superior — indica visualmente la rutina */}
@@ -97,7 +98,7 @@ export function RoutineList({ routines }: RoutineListProps): React.ReactNode {
                   type="button"
                   className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
                   title="Editar nombre"
-                  onClick={(e) => { e.stopPropagation(); router.push(`/admin/routines/${routine.id}/edit`); }}
+                  onClick={(e) => { e.stopPropagation(); router.push(`/admin/routines/${toOpaqueId(routine.id)}/edit`); }}
                 >
                   <Pencil className="w-3.5 h-3.5" />
                 </button>

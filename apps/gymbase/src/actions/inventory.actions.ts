@@ -7,6 +7,7 @@ import { createClient, getCurrentUser, getOrgId } from "@/lib/supabase/server";
 import {
   fetchProducts,
   fetchProductById,
+  fetchProductsPaginated,
   insertProduct,
   patchProduct,
   insertMovement,
@@ -15,6 +16,7 @@ import {
   insertSale,
   insertSaleItems,
   fetchSales,
+  fetchSalesPaginated,
   fetchInventoryStats,
 } from "@/services/inventory.service";
 import {
@@ -32,6 +34,7 @@ import type {
   SalePaymentMethod,
   InventoryStats,
 } from "@/types/gym-inventory";
+import type { PaginatedResult } from "@core/types/pagination";
 
 // ─── createProduct ────────────────────────────────────────────────────────────
 
@@ -45,7 +48,7 @@ export async function createProduct(input: unknown): Promise<ActionResult<Invent
     .select("role")
     .eq("id", user.id)
     .single();
-  if (profile?.role !== "admin") return { success: false, error: "Sin permisos" };
+  if (profile?.role !== "admin" && profile?.role !== "owner") return { success: false, error: "Sin permisos" };
 
   const parsed = createProductSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.flatten().fieldErrors };
@@ -101,7 +104,7 @@ export async function updateProduct(
     .select("role")
     .eq("id", user.id)
     .single();
-  if (profile?.role !== "admin") return { success: false, error: "Sin permisos" };
+  if (profile?.role !== "admin" && profile?.role !== "owner") return { success: false, error: "Sin permisos" };
 
   const parsed = updateProductSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.flatten().fieldErrors };
@@ -130,7 +133,7 @@ export async function adjustStock(input: unknown): Promise<ActionResult> {
     .select("role")
     .eq("id", user.id)
     .single();
-  if (profile?.role !== "admin") return { success: false, error: "Sin permisos" };
+  if (profile?.role !== "admin" && profile?.role !== "owner") return { success: false, error: "Sin permisos" };
 
   const parsed = adjustStockSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.flatten().fieldErrors };
@@ -184,7 +187,7 @@ export async function registerSale(input: unknown): Promise<ActionResult<Sale>> 
     .select("role")
     .eq("id", user.id)
     .single();
-  if (profile?.role !== "admin") return { success: false, error: "Sin permisos" };
+  if (profile?.role !== "admin" && profile?.role !== "owner") return { success: false, error: "Sin permisos" };
 
   const parsed = registerSaleSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.flatten().fieldErrors };
@@ -315,6 +318,29 @@ export async function getProductById(productId: string): Promise<ActionResult<{
   }
 }
 
+// ─── getProductsPaginated ─────────────────────────────────────────────────────
+
+export async function getProductsPaginated(params: {
+  page: number;
+  pageSize: number;
+  search?: string;
+  category?: ProductCategory;
+  onlyLowStock?: boolean;
+}): Promise<PaginatedResult<InventoryProduct>> {
+  const user = await getCurrentUser();
+  const empty = { data: [], total: 0, page: params.page, pageSize: params.pageSize, totalPages: 1, hasNextPage: false, hasPrevPage: false };
+  if (!user) return empty;
+
+  const supabase = await createClient();
+  try {
+    const orgId = await getOrgId();
+    return await fetchProductsPaginated(supabase, orgId, params);
+  } catch (error) {
+    console.error("[getProductsPaginated] Error:", error);
+    return empty;
+  }
+}
+
 // ─── getLowStockCount ─────────────────────────────────────────────────────────
 
 // Para el badge de alerta en el sidebar del admin
@@ -348,7 +374,8 @@ export async function getSales(filters?: {
     .select("role")
     .eq("id", user.id)
     .single();
-  if (profile?.role !== "admin") return { success: false, error: "Sin permisos" };
+  // Tanto admin como owner pueden gestionar el historial de ventas
+  if (profile?.role !== "admin" && profile?.role !== "owner") return { success: false, error: "Sin permisos" };
 
   try {
     const orgId = await getOrgId();
@@ -360,9 +387,67 @@ export async function getSales(filters?: {
   }
 }
 
+// ─── getSalesPaginated ────────────────────────────────────────────────────────
+
+export async function getSalesPaginated(params: {
+  page: number;
+  pageSize: number;
+  dateFrom?: string;
+  dateTo?: string;
+  paymentMethod?: SalePaymentMethod;
+}): Promise<PaginatedResult<Sale>> {
+  const user = await getCurrentUser();
+  const empty = { data: [], total: 0, page: params.page, pageSize: params.pageSize, totalPages: 1, hasNextPage: false, hasPrevPage: false };
+  if (!user) return empty;
+
+  const supabase = await createClient();
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+  if (profile?.role !== "admin" && profile?.role !== "owner") return empty;
+
+  try {
+    const orgId = await getOrgId();
+    return await fetchSalesPaginated(supabase, orgId, params);
+  } catch (error) {
+    console.error("[getSalesPaginated] Error:", error);
+    return empty;
+  }
+}
+
+// ─── getPublishedProducts ─────────────────────────────────────────────────────
+
+// Productos activos visibles para miembros en la tienda del portal — sin restricción de rol
+export async function getPublishedProducts(): Promise<InventoryProduct[]> {
+  const user = await getCurrentUser();
+  if (!user) return [];
+
+  const supabase = await createClient();
+  const orgId = await getOrgId();
+
+  try {
+    const { data, error } = await supabase
+      .from("gym_inventory_products")
+      .select(
+        "id, org_id, name, description, sku, category, unit, sale_price, current_stock, image_url, is_active, created_at, updated_at, cost_price, min_stock_alert"
+      )
+      .eq("org_id", orgId)
+      .eq("is_active", true)
+      .order("name", { ascending: true });
+
+    if (error) throw error;
+    return (data ?? []) as InventoryProduct[];
+  } catch (error) {
+    console.error("[getPublishedProducts] Error:", error);
+    return [];
+  }
+}
+
 // ─── getInventoryStats ────────────────────────────────────────────────────────
 
-// Para el dashboard de Módulo 10 — Contabilidad & Reportes
+// Para el dashboard de Módulo 10 — Contabilidad & Reportes (solo owner)
 export async function getInventoryStats(): Promise<ActionResult<InventoryStats>> {
   const user = await getCurrentUser();
   if (!user) return { success: false, error: "No autenticado" };
@@ -373,7 +458,8 @@ export async function getInventoryStats(): Promise<ActionResult<InventoryStats>>
     .select("role")
     .eq("id", user.id)
     .single();
-  if (profile?.role !== "admin") return { success: false, error: "Sin permisos" };
+  // Solo el owner puede ver estadísticas financieras de inventario
+  if (profile?.role !== "owner") return { success: false, error: "Sin permisos" };
 
   try {
     const orgId = await getOrgId();

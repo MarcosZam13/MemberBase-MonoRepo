@@ -1,6 +1,14 @@
 // gym-challenges.ts — Tipos para el módulo de retos y gamificación
 
-export type ChallengeType = "attendance" | "workout" | "weight" | "custom";
+export type ChallengeType =
+  | "attendance"
+  | "workout"
+  | "weight"
+  | "weight_loss"
+  | "personal_record"
+  | "custom";
+
+export type WeightLossMode = "absolute" | "percentage";
 export type ParticipantStatus = "active" | "completed" | "withdrawn";
 export type BadgeType = "completed" | "winner" | "top3";
 
@@ -20,6 +28,11 @@ export interface Challenge {
   prize_description: string | null;
   created_by: string;
   created_at: string;
+  // Campos de configuración por tipo
+  exercise_id: string | null;
+  target_routine_id: string | null;
+  weight_loss_mode: WeightLossMode;
+  // Computed fields
   participants_count?: number;
 }
 
@@ -30,6 +43,7 @@ export interface ChallengeParticipant {
   org_id: string;
   status: ParticipantStatus;
   joined_at: string;
+  baseline_weight_kg: number | null;
   total_progress?: number;
   profile?: {
     full_name: string | null;

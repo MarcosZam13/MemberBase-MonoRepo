@@ -33,7 +33,7 @@ export async function fetchRoutineById(
   const { data, error } = await supabase
     .from("gym_routines")
     .select(`
-      id, org_id, name, description, created_by, duration_weeks, days_per_week, is_template, created_at, updated_at,
+      id, org_id, name, description, created_by, duration_weeks, days_per_week, is_template, is_member_created, is_public, created_at, updated_at,
       days:gym_routine_days(
         id, routine_id, day_number, name,
         exercises:gym_routine_exercises(
@@ -60,6 +60,7 @@ export async function insertRoutine(
     duration_weeks?: number;
     days_per_week?: number;
     is_template?: boolean;
+    is_default?: boolean;
   }
 ): Promise<Routine> {
   const { data: routine, error } = await supabase
@@ -72,8 +73,9 @@ export async function insertRoutine(
       duration_weeks: data.duration_weeks ?? null,
       days_per_week: data.days_per_week ?? null,
       is_template: data.is_template ?? false,
+      is_default: data.is_default ?? false,
     })
-    .select("id, org_id, name, description, created_by, duration_weeks, days_per_week, is_template, is_member_created, is_public, created_at, updated_at")
+    .select("id, org_id, name, description, created_by, duration_weeks, days_per_week, is_template, is_member_created, is_public, is_default, created_at, updated_at")
     .single();
 
   if (error) throw new Error(error.message);
@@ -90,13 +92,14 @@ export async function updateRoutine(
     duration_weeks: number;
     days_per_week: number;
     is_template: boolean;
+    is_default: boolean;
   }>
 ): Promise<Routine> {
   const { data: routine, error } = await supabase
     .from("gym_routines")
     .update({ ...data, updated_at: new Date().toISOString() })
     .eq("id", routineId)
-    .select("id, org_id, name, description, created_by, duration_weeks, days_per_week, is_template, is_member_created, is_public, created_at, updated_at")
+    .select("id, org_id, name, description, created_by, duration_weeks, days_per_week, is_template, is_member_created, is_public, is_default, created_at, updated_at")
     .single();
 
   if (error) throw new Error(error.message);

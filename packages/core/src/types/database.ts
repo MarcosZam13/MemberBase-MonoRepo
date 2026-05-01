@@ -2,7 +2,7 @@
 
 // ─── Enums / Union Types ───────────────────────────────────────────────────────
 
-export type UserRole = "admin" | "member";
+export type UserRole = "admin" | "owner" | "member";
 
 export type SubscriptionStatus =
   | "pending"
@@ -129,6 +129,8 @@ export interface PaymentProofWithDetails extends PaymentProof {
 
 // ─── Comunidad ────────────────────────────────────────────────────────────────
 
+export type ReactionType = "like" | "clap" | "fire" | "muscle" | "heart" | "laugh" | "sad";
+
 export interface CommunityPost {
   id: string;
   user_id: string;
@@ -136,12 +138,19 @@ export interface CommunityPost {
   body: string;
   is_pinned: boolean;
   is_visible: boolean;
+  cover_image_url: string | null;
+  cover_image_path: string | null;
   created_at: string;
   updated_at: string;
   // Relaciones opcionales
   author?: Pick<Profile, "id" | "full_name" | "avatar_url">;
   comments?: CommunityComment[];
   comment_count?: number;
+  // Reacciones procesadas del lado del servidor
+  reaction_counts?: Partial<Record<ReactionType, number>>;
+  my_reaction?: ReactionType | null;
+  // Segmentación por plan (solo admin)
+  plan_ids?: string[];
 }
 
 export interface CommunityComment {
@@ -154,6 +163,14 @@ export interface CommunityComment {
   updated_at: string;
   // Relaciones opcionales
   author?: Pick<Profile, "id" | "full_name" | "avatar_url">;
+}
+
+export interface CommunityReaction {
+  id: string;
+  post_id: string;
+  user_id: string;
+  type: ReactionType;
+  created_at: string;
 }
 
 // ─── KPIs del dashboard de administración ─────────────────────────────────────

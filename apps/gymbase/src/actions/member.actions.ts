@@ -20,7 +20,7 @@ const createMemberSchema = z.object({
 // Crea un nuevo miembro en Supabase Auth, actualiza su perfil y le asigna una membresía (solo admin)
 export async function createMember(input: unknown): Promise<ActionResult<{ id: string }>> {
   const user = await getCurrentUser();
-  if (!user || user.role !== "admin") return { success: false, error: "Sin permisos" };
+  if (!user || user.role !== "admin" && user.role !== "owner") return { success: false, error: "Sin permisos" };
 
   const parsed = createMemberSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.flatten().fieldErrors };
@@ -96,24 +96,31 @@ export async function createMember(input: unknown): Promise<ActionResult<{ id: s
 const updateMemberProfileSchema = z.object({
   full_name: z.string().min(1, "El nombre es requerido").max(100).optional(),
   phone: z.string().max(20).optional().nullable(),
+  avatar_url: z.string().url("URL inválida").optional().nullable().or(z.literal("")),
 });
 
-// Actualiza el nombre y teléfono de un miembro desde el panel de admin
+// Actualiza el nombre, teléfono y avatar_url de un miembro desde el panel de admin
 export async function updateMemberProfile(
   memberId: string,
   input: unknown,
 ): Promise<ActionResult> {
   const user = await getCurrentUser();
-  if (!user || user.role !== "admin") return { success: false, error: "Sin permisos" };
+  if (!user || user.role !== "admin" && user.role !== "owner") return { success: false, error: "Sin permisos" };
 
   const parsed = updateMemberProfileSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.flatten().fieldErrors };
+
+  // Normalizar avatar_url: cadena vacía → null
+  const updateData = {
+    ...parsed.data,
+    avatar_url: parsed.data.avatar_url || null,
+  };
 
   const supabase = await createClient();
   try {
     const { error } = await supabase
       .from("profiles")
-      .update(parsed.data)
+      .update(updateData)
       .eq("id", memberId);
     if (error) throw error;
     revalidatePath(`/admin/members/${memberId}`);
@@ -122,4 +129,23 @@ export async function updateMemberProfile(
     console.error("[updateMemberProfile] Error:", error);
     return { success: false, error: "Error al actualizar el perfil" };
   }
+}
+
+// Cuenta membresías activas que vencen en los próximos 7 días — KPI de alerta en el dashboard admin
+export async function getExpiringMembershipsCount(): Promise<number> {
+  const user = await getCurrentUser();
+  if (!user || user.role !== "admin" && user.role !== "owner") return 0;
+
+  const supabase = await createClient();
+  const now = new Date().toISOString();
+  const in7days = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  const { count } = await supabase
+    .from("subscriptions")
+    .select("*", { count: "exact", head: true })
+    .eq("status", "active")
+    .gte("expires_at", now)
+    .lte("expires_at", in7days);
+
+  return count ?? 0;
 }

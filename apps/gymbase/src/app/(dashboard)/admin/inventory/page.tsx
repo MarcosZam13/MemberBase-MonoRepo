@@ -1,23 +1,45 @@
-// page.tsx — Dashboard de inventario: stats, alertas de stock bajo y tabla de productos
+// page.tsx — Dashboard de inventario con paginación server-side y filtros por URL params
 
-import { Package, AlertTriangle, TrendingUp } from "lucide-react";
-import { getProducts, getLowStockCount, getInventoryStats } from "@/actions/inventory.actions";
+import { Package, AlertTriangle } from "lucide-react";
+import { getProductsPaginated, getProducts, getLowStockCount } from "@/actions/inventory.actions";
 import { ProductTable } from "@/components/gym/inventory/ProductTable";
+import type { ProductCategory } from "@/types/gym-inventory";
 
-function formatPrice(n: number): string {
-  return `₡${n.toLocaleString("es-CR")}`;
+const PAGE_SIZE = 25;
+
+const VALID_CATEGORIES = ["supplement", "apparel", "equipment", "food_drink", "other"];
+
+interface PageProps {
+  searchParams: Promise<{
+    page?: string;
+    search?: string;
+    category?: string;
+    onlyLowStock?: string;
+  }>;
 }
 
-export default async function AdminInventoryPage(): Promise<React.ReactNode> {
-  const [productsResult, lowStockCount, statsResult] = await Promise.all([
-    getProducts(),
+export default async function AdminInventoryPage({ searchParams }: PageProps): Promise<React.ReactNode> {
+  const params = await searchParams;
+  const page = Math.max(1, parseInt(params.page ?? "1", 10));
+  const search = params.search ?? "";
+  const category = (VALID_CATEGORIES.includes(params.category ?? "") ? params.category : "all") as ProductCategory | "all";
+  const onlyLowStock = params.onlyLowStock === "1";
+
+  // Carga paginada para la tabla + todos los productos para el QuickStockModal y stats + conteo de stock bajo
+  const [result, allProductsResult, lowStockCount] = await Promise.all([
+    getProductsPaginated({
+      page,
+      pageSize: PAGE_SIZE,
+      search: search || undefined,
+      category: category !== "all" ? category : undefined,
+      onlyLowStock,
+    }),
+    getProducts(), // para el modal de ajuste rápido y el banner de alertas
     getLowStockCount(),
-    getInventoryStats(),
   ]);
 
-  const products = productsResult.success ? (productsResult.data ?? []) : [];
-  const stats = statsResult.success ? statsResult.data : null;
-  const lowStockProducts = products.filter((p) => p.current_stock <= p.min_stock_alert);
+  const allProducts = allProductsResult.success ? (allProductsResult.data ?? []) : [];
+  const lowStockProducts = allProducts.filter((p) => p.current_stock <= p.min_stock_alert);
 
   return (
     <div className="p-6 space-y-6">
@@ -28,13 +50,13 @@ export default async function AdminInventoryPage(): Promise<React.ReactNode> {
             Inventario
           </h1>
           <p className="text-xs text-[#555] mt-1">
-            {products.length} producto{products.length !== 1 ? "s" : ""} activo{products.length !== 1 ? "s" : ""}
+            {allProducts.length} producto{allProducts.length !== 1 ? "s" : ""} activo{allProducts.length !== 1 ? "s" : ""}
           </p>
         </div>
       </div>
 
       {/* Stats cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {/* Total productos */}
         <div className="rounded-2xl p-4" style={{ backgroundColor: "#111111", border: "1px solid #1e1e1e" }}>
           <div className="flex items-center gap-3 mb-3">
@@ -43,23 +65,7 @@ export default async function AdminInventoryPage(): Promise<React.ReactNode> {
             </div>
             <p className="text-xs font-medium text-[#737373] uppercase tracking-wider">Total Productos</p>
           </div>
-          <p className="text-3xl font-bold font-barlow text-white">{stats?.total_products ?? products.length}</p>
-        </div>
-
-        {/* Valor en inventario */}
-        <div className="rounded-2xl p-4" style={{ backgroundColor: "#111111", border: "1px solid #1e1e1e" }}>
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: "rgba(34,197,94,0.1)" }}>
-              <TrendingUp className="w-4 h-4 text-green-400" />
-            </div>
-            <p className="text-xs font-medium text-[#737373] uppercase tracking-wider">Valor en Inventario</p>
-          </div>
-          <p className="text-2xl font-bold font-barlow text-white">
-            {stats ? formatPrice(stats.total_stock_value) : "—"}
-          </p>
-          {stats && (
-            <p className="text-xs text-[#555] mt-1">Venta estimada: {formatPrice(stats.total_sale_value)}</p>
-          )}
+          <p className="text-3xl font-bold font-barlow text-white">{allProducts.length}</p>
         </div>
 
         {/* Stock bajo */}
@@ -118,7 +124,13 @@ export default async function AdminInventoryPage(): Promise<React.ReactNode> {
       )}
 
       {/* Tabla de productos */}
-      <ProductTable initialProducts={products} initialOnlyLowStock={false} />
+      <ProductTable
+        result={result}
+        allProducts={allProducts}
+        currentSearch={search}
+        currentCategory={category}
+        currentOnlyLowStock={onlyLowStock}
+      />
     </div>
   );
 }

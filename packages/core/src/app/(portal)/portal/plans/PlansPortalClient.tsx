@@ -18,9 +18,12 @@ import type { MembershipPlan, Subscription } from "@/types/database";
 interface PlansPortalClientProps {
   plans: MembershipPlan[];
   currentSubscription: Subscription | null;
+  // Datos de pago del gym desde la DB — sobreescriben themeConfig si se proveen
+  sinpeNumber?: string | null;
+  sinpeName?: string | null;
 }
 
-export function PlansPortalClient({ plans, currentSubscription }: PlansPortalClientProps) {
+export function PlansPortalClient({ plans, currentSubscription, sinpeNumber, sinpeName }: PlansPortalClientProps) {
   const router = useRouter();
   const [selectedPlan, setSelectedPlan] = useState<MembershipPlan | null>(null);
   const [isPending, setIsPending] = useState(false);
@@ -175,7 +178,7 @@ export function PlansPortalClient({ plans, currentSubscription }: PlansPortalCli
               <div className="flex justify-between items-center">
                 <span className="text-muted-foreground">Número</span>
                 <span className="font-bold font-mono text-lg text-primary">
-                  {themeConfig.payment.sinpe_number}
+                  {sinpeNumber ?? themeConfig.payment.sinpe_number}
                 </span>
               </div>
               <div className="flex justify-between items-center">

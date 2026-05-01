@@ -18,30 +18,22 @@ export function createAdminClient() {
   });
 }
 
-import { createClient as _createClient } from "@core/lib/supabase/server";
+import { headers } from "next/headers";
 
-// GymBase opera como single-tenant: un deployment = un gym = una org.
-// Esta función obtiene el org_id de la primera (y única) organización.
-// En multi-tenant se cambiaría por una resolución por dominio o sesión.
-let cachedOrgId: string | null = null;
-
+// Obtiene el org_id del gym que corresponde al request actual.
+// En multi-tenant (Fase 2): lee el header x-org-id inyectado por el middleware.
+// Fallback para entornos sin middleware configurado: variable de entorno GYMBASE_ORG_ID.
 export async function getOrgId(): Promise<string> {
-  if (cachedOrgId) return cachedOrgId;
+  const headersList = await headers();
+  const orgId = headersList.get("x-org-id");
 
-  const supabase = await _createClient();
-  const { data, error } = await supabase
-    .from("organizations")
-    .select("id")
-    .limit(1)
-    .single();
+  if (orgId) return orgId;
 
-  if (error || !data) {
-    // Fallback: usar variable de entorno si la tabla no existe aún
-    const envOrgId = process.env.GYMBASE_ORG_ID;
-    if (envOrgId) return envOrgId;
-    throw new Error("No se encontró una organización. Ejecuta las migraciones de GymBase.");
-  }
+  // Fallback: variable de entorno (dev local o entornos sin middleware)
+  const envOrgId = process.env.GYMBASE_ORG_ID;
+  if (envOrgId) return envOrgId;
 
-  cachedOrgId = data.id;
-  return data.id;
+  throw new Error(
+    "No se pudo determinar el org_id. Verifica la configuración del middleware y GYMBASE_ORG_ID."
+  );
 }

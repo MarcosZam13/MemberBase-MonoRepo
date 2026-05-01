@@ -121,7 +121,7 @@ export async function uploadPaymentProof(formData: FormData): Promise<ActionResu
 export async function approvePayment(formData: unknown): Promise<ActionResult> {
   const user = await getCurrentUser();
   if (!user) return { success: false, error: "No autenticado" };
-  if (user.role !== "admin") return { success: false, error: "Sin permisos" };
+  if (user.role !== "admin" && user.role !== "owner") return { success: false, error: "Sin permisos" };
 
   const parsed = approvePaymentSchema.safeParse(formData);
   if (!parsed.success) {
@@ -130,10 +130,10 @@ export async function approvePayment(formData: unknown): Promise<ActionResult> {
 
   const supabase = await createClient();
 
-  // Obtener la duración del plan para calcular la fecha de expiración
+  // Obtener user_id y duración del plan para calcular fechas y detectar membresía activa
   const { data: subscription } = await supabase
     .from("subscriptions")
-    .select("plan_id, membership_plans(duration_days)")
+    .select("user_id, plan_id, membership_plans(duration_days)")
     .eq("id", parsed.data.subscription_id)
     .single();
 
@@ -141,11 +141,26 @@ export async function approvePayment(formData: unknown): Promise<ActionResult> {
     return { success: false, error: "Suscripción no encontrada" };
   }
 
-  // Calcular fechas de inicio y expiración
-  // PostgREST retorna el join de membership_plans como array (embeddings siempre son arrays en supabase-js)
-  const startsAt = new Date();
-  const expiresAt = new Date();
+  // Calcular fechas de inicio y expiración.
+  // Si el usuario ya tiene una suscripción activa vigente, encolar el nuevo período desde su vencimiento
+  // para que no pierda días pagados — el mismo patrón que renewManualSubscription.
   const durationDays = (subscription.membership_plans as { duration_days: number }[] | null)?.[0]?.duration_days ?? 30;
+
+  const { data: existingActive } = await supabase
+    .from("subscriptions")
+    .select("expires_at")
+    .eq("user_id", (subscription as unknown as { user_id: string }).user_id)
+    .eq("status", "active")
+    .neq("id", parsed.data.subscription_id)
+    .gt("expires_at", new Date().toISOString())
+    .order("expires_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const now = new Date();
+  const currentExpiry = existingActive?.expires_at ? new Date(existingActive.expires_at) : null;
+  const startsAt = currentExpiry && currentExpiry > now ? currentExpiry : now;
+  const expiresAt = new Date(startsAt);
   expiresAt.setDate(expiresAt.getDate() + durationDays);
 
   // Actualizar el comprobante como aprobado
@@ -188,7 +203,7 @@ export async function approvePayment(formData: unknown): Promise<ActionResult> {
 export async function rejectPayment(formData: unknown): Promise<ActionResult> {
   const user = await getCurrentUser();
   if (!user) return { success: false, error: "No autenticado" };
-  if (user.role !== "admin") return { success: false, error: "Sin permisos" };
+  if (user.role !== "admin" && user.role !== "owner") return { success: false, error: "Sin permisos" };
 
   const parsed = rejectPaymentSchema.safeParse(formData);
   if (!parsed.success) {
@@ -227,7 +242,7 @@ export async function rejectPayment(formData: unknown): Promise<ActionResult> {
 // Obtiene los comprobantes pendientes de revisión para el panel admin
 export async function getPendingPayments(): Promise<PaymentProofWithDetails[]> {
   const user = await getCurrentUser();
-  if (!user || user.role !== "admin") return [];
+  if (!user || user.role !== "admin" && user.role !== "owner") return [];
 
   const supabase = await createClient();
   const { data, error } = await supabase
@@ -250,19 +265,20 @@ export async function getPendingPayments(): Promise<PaymentProofWithDetails[]> {
     return [];
   }
 
-  // Generar signed URLs para cada comprobante (bucket privado, válidas 1 hora).
-  // BUG FIX: los pagos manuales presenciales tienen file_path vacío — no intentar generar URL.
-  const proofs = await Promise.all(
-    (data ?? []).map(async (proof) => {
-      if (!proof.file_path) return proof;
-      const { data: signed } = await supabase.storage
-        .from(STORAGE_BUCKETS.PAYMENT_PROOFS)
-        .createSignedUrl(proof.file_path, 3600);
-      return { ...proof, file_url: signed?.signedUrl ?? proof.file_url };
-    })
-  );
+  // Firmar todas las URLs en un solo llamado al storage (evita N+1 de hasta 50+ calls)
+  // Los pagos presenciales tienen file_path vacío — se filtran antes de la llamada
+  const rows = data ?? [];
+  const paths = rows.filter((p) => p.file_path).map((p) => p.file_path);
+  const { data: signedData } = paths.length > 0
+    ? await supabase.storage.from(STORAGE_BUCKETS.PAYMENT_PROOFS).createSignedUrls(paths, 3600)
+    : { data: [] };
 
-  return proofs as unknown as PaymentProofWithDetails[];
+  const signedMap = new Map((signedData ?? []).map((s) => [s.path, s.signedUrl]));
+
+  return rows.map((proof) => ({
+    ...proof,
+    file_url: (proof.file_path && signedMap.get(proof.file_path)) || proof.file_url,
+  })) as unknown as PaymentProofWithDetails[];
 }
 
 // Cancela la suscripción activa o pendiente del usuario actual
@@ -312,7 +328,7 @@ export async function registerManualPayment(input: {
 }): Promise<ActionResult> {
   const user = await getCurrentUser();
   if (!user) return { success: false, error: "No autenticado" };
-  if (user.role !== "admin") return { success: false, error: "Sin permisos" };
+  if (user.role !== "admin" && user.role !== "owner") return { success: false, error: "Sin permisos" };
 
   const schema = z.object({
     userId: z.string().uuid(),

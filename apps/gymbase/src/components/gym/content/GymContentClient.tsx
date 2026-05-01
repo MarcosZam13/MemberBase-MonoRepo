@@ -4,12 +4,19 @@
 
 import { useState, useDeferredValue } from "react";
 import { toast } from "sonner";
-import { Search, LayoutGrid, List, FileText, Video, FileDown, Link as LinkIcon, Image as ImageIcon, Plus, Eye, EyeOff, Trash2 } from "lucide-react";
-import { togglePublished, deleteContent } from "@/actions/content.actions";
+import {
+  Search, LayoutGrid, List, FileText, Video, FileDown,
+  Link as LinkIcon, Image as ImageIcon, Plus, Eye, EyeOff,
+  Trash2, Pencil, BarChart2,
+} from "lucide-react";
+import { togglePublished, deleteContent } from "@core/actions/content.actions";
 import type { Content, ContentType, MembershipPlan, ContentCategory } from "@/types/database";
 
+// Tipo extendido que incluye métricas de admin
+type ContentWithMeta = Content & { view_count: number; plan_ids: string[] };
+
 // Icono por tipo de contenido
-const TYPE_ICONS: Record<ContentType, React.ComponentType<{ className?: string }>> = {
+const TYPE_ICONS: Record<ContentType, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
   article: FileText,
   video:   Video,
   image:   ImageIcon,
@@ -17,7 +24,6 @@ const TYPE_ICONS: Record<ContentType, React.ComponentType<{ className?: string }
   link:    LinkIcon,
 };
 
-// Etiqueta visible en la badge del tipo
 const TYPE_LABELS: Record<ContentType, string> = {
   article: "ARTÍCULO",
   video:   "VIDEO",
@@ -26,7 +32,7 @@ const TYPE_LABELS: Record<ContentType, string> = {
   link:    "ENLACE",
 };
 
-// Color de la badge por tipo
+// Color de badge por tipo
 const TYPE_BADGE_CLS: Record<ContentType, string> = {
   article: "bg-[rgba(56,189,248,0.2)] text-[#38BDF8]",
   video:   "bg-[rgba(239,68,68,0.2)] text-[#EF4444]",
@@ -35,7 +41,6 @@ const TYPE_BADGE_CLS: Record<ContentType, string> = {
   link:    "bg-[rgba(34,197,94,0.2)] text-[#22C55E]",
 };
 
-// Color del ícono por tipo
 const TYPE_ICON_CLS: Record<ContentType, string> = {
   article: "text-[#38BDF8]",
   video:   "text-[#EF4444]",
@@ -44,50 +49,45 @@ const TYPE_ICON_CLS: Record<ContentType, string> = {
   link:    "text-[#22C55E]",
 };
 
-// Las categorías de filtro sin contar subcategorías
-const FILTER_CATEGORIES = ["Todo", "Ejercicios", "Nutrición", "Bienestar", "Guías del Gym", "Retos"];
-
-// Marca el contenido nuevo (publicado en últimos 7 días)
+// Marca el contenido nuevo (creado en últimos 7 días)
 function isNew(createdAt: string): boolean {
   return Date.now() - new Date(createdAt).getTime() < 7 * 24 * 60 * 60 * 1000;
 }
 
 interface GymContentClientProps {
-  initialContent: Content[];
+  initialContent: ContentWithMeta[];
   plans: MembershipPlan[];
   categories: ContentCategory[];
 }
 
-export function GymContentClient({ initialContent }: GymContentClientProps): React.ReactNode {
-  const [content, setContent] = useState<Content[]>(initialContent);
+export function GymContentClient({ initialContent, plans }: GymContentClientProps): React.ReactNode {
+  const [content, setContent] = useState<ContentWithMeta[]>(initialContent);
   const [query, setQuery] = useState("");
-  const [catFilter, setCatFilter] = useState("Todo");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const deferredQuery = useDeferredValue(query);
 
+  // Mapa para resolver plan_id → nombre
+  const planMap = Object.fromEntries(plans.map((p) => [p.id, p.name]));
+
   const filtered = content.filter((item) => {
-    if (deferredQuery.trim()) {
-      const q = deferredQuery.toLowerCase();
-      if (!item.title.toLowerCase().includes(q) && !(item.description ?? "").toLowerCase().includes(q)) {
-        return false;
-      }
-    }
-    // El filtro de categoría es simple: coincidencia de nombre en el titulo/descripción como fallback
-    // ya que la relación de categorías viene vía category_id — se puede mejorar con join
-    return true;
+    if (!deferredQuery.trim()) return true;
+    const q = deferredQuery.toLowerCase();
+    return item.title.toLowerCase().includes(q) || (item.description ?? "").toLowerCase().includes(q);
   });
 
-  async function handleToggle(item: Content): Promise<void> {
+  async function handleToggle(item: ContentWithMeta): Promise<void> {
     const result = await togglePublished(item.id, !item.is_published);
     if (result.success) {
-      setContent((prev) => prev.map((c) => c.id === item.id ? { ...c, is_published: !c.is_published } : c));
+      setContent((prev) =>
+        prev.map((c) => c.id === item.id ? { ...c, is_published: !c.is_published } : c)
+      );
       toast.success(item.is_published ? "Contenido ocultado" : "Contenido publicado");
     } else {
       toast.error("Error al cambiar el estado");
     }
   }
 
-  async function handleDelete(item: Content): Promise<void> {
+  async function handleDelete(item: ContentWithMeta): Promise<void> {
     if (!window.confirm(`¿Eliminar "${item.title}"? Esta acción no se puede deshacer.`)) return;
     const result = await deleteContent(item.id);
     if (result.success) {
@@ -142,23 +142,6 @@ export function GymContentClient({ initialContent }: GymContentClientProps): Rea
         </div>
       </div>
 
-      {/* Chips de filtro categoría */}
-      <div className="flex gap-2 flex-wrap">
-        {FILTER_CATEGORIES.map((cat) => (
-          <button
-            key={cat}
-            onClick={() => setCatFilter(cat)}
-            className={`h-7 px-3 rounded-full text-[11px] font-medium border transition-all ${
-              catFilter === cat
-                ? "bg-[rgba(255,94,20,0.12)] border-[rgba(255,94,20,0.4)] text-[#FF5E14]"
-                : "bg-[#111] border-[#222] text-[#666] hover:border-[#333]"
-            }`}
-          >
-            {cat}
-          </button>
-        ))}
-      </div>
-
       {/* Vista Grid */}
       {viewMode === "grid" && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -177,14 +160,14 @@ export function GymContentClient({ initialContent }: GymContentClientProps): Rea
               return (
                 <div
                   key={item.id}
-                  className={`bg-[#111] border border-[#1a1a1a] rounded-[14px] overflow-hidden transition-all hover:border-[#2a2a2a] ${
-                    !item.is_published ? "opacity-50" : ""
+                  className={`bg-[#111] border border-[#1a1a1a] rounded-[14px] overflow-hidden transition-all hover:border-[#2a2a2a] flex flex-col ${
+                    !item.is_published ? "opacity-60" : ""
                   }`}
                 >
-                  {/* Thumbnail / icono */}
+                  {/* Thumbnail / placeholder */}
                   {item.thumbnail_url ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <div className="h-[100px] overflow-hidden relative bg-[#1a1a1a]">
+                    <div className="h-[110px] overflow-hidden relative bg-[#1a1a1a]">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={item.thumbnail_url}
                         alt={item.title}
@@ -200,8 +183,8 @@ export function GymContentClient({ initialContent }: GymContentClientProps): Rea
                       )}
                     </div>
                   ) : (
-                    <div className="h-[100px] bg-[#1a1a1a] flex items-center justify-center relative">
-                      <Icon className={`w-8 h-8 ${iconCls}`} />
+                    <div className="h-[110px] bg-[#1a1a1a] flex items-center justify-center relative">
+                      <Icon className={`w-9 h-9 ${iconCls}`} />
                       <span className={`absolute bottom-1.5 left-1.5 px-1.5 py-0.5 rounded text-[9px] font-bold ${badgeCls}`}>
                         {typeLabel}
                       </span>
@@ -214,25 +197,60 @@ export function GymContentClient({ initialContent }: GymContentClientProps): Rea
                   )}
 
                   {/* Info */}
-                  <div className="p-3">
+                  <div className="p-3 flex-1">
                     <p className="text-[13px] font-semibold text-[#ddd] leading-tight line-clamp-2">{item.title}</p>
                     {item.description && (
                       <p className="text-[11px] text-[#555] mt-1 line-clamp-1">{item.description}</p>
                     )}
+
+                    {/* Plan chips — qué planes tienen acceso */}
+                    {item.plan_ids.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {item.plan_ids.map((pid) => (
+                          <span
+                            key={pid}
+                            className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-[rgba(255,94,20,0.1)] text-[#FF5E14] border border-[rgba(255,94,20,0.2)]"
+                          >
+                            {planMap[pid] ?? "Plan"}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
-                  {/* Acciones */}
+                  {/* Footer: estado + vistas + acciones */}
                   <div className="px-3 pb-3 flex items-center gap-1.5">
+                    {/* Estado publicado/borrador */}
                     <button
                       onClick={() => handleToggle(item)}
-                      className="h-6 px-2 flex items-center gap-1 bg-[#161616] border border-[#222] rounded text-[10px] text-[#666] hover:text-[#ccc] transition-colors"
+                      className={`h-6 px-2 flex items-center gap-1 rounded text-[10px] font-medium border transition-colors ${
+                        item.is_published
+                          ? "bg-[rgba(34,197,94,0.08)] border-[rgba(34,197,94,0.2)] text-[#22C55E] hover:bg-[rgba(34,197,94,0.15)]"
+                          : "bg-[#161616] border-[#222] text-[#555] hover:text-[#888]"
+                      }`}
                     >
                       {item.is_published ? <Eye className="w-2.5 h-2.5" /> : <EyeOff className="w-2.5 h-2.5" />}
                       {item.is_published ? "Publicado" : "Borrador"}
                     </button>
+
+                    {/* Contador de vistas */}
+                    <span className="flex items-center gap-1 text-[10px] text-[#444] ml-auto">
+                      <BarChart2 className="w-3 h-3" />
+                      {item.view_count}
+                    </span>
+
+                    {/* Editar */}
+                    <a
+                      href={`/admin/content/${item.id}/edit`}
+                      className="h-6 w-6 flex items-center justify-center bg-[#161616] border border-[#222] rounded hover:border-[#FF5E14] hover:text-[#FF5E14] text-[#555] transition-colors"
+                    >
+                      <Pencil className="w-2.5 h-2.5" />
+                    </a>
+
+                    {/* Eliminar */}
                     <button
                       onClick={() => handleDelete(item)}
-                      className="h-6 w-6 flex items-center justify-center ml-auto bg-[#161616] border border-[#222] rounded hover:border-[#EF4444] hover:text-[#EF4444] text-[#555] transition-colors"
+                      className="h-6 w-6 flex items-center justify-center bg-[#161616] border border-[#222] rounded hover:border-[#EF4444] hover:text-[#EF4444] text-[#555] transition-colors"
                     >
                       <Trash2 className="w-2.5 h-2.5" />
                     </button>
@@ -260,7 +278,7 @@ export function GymContentClient({ initialContent }: GymContentClientProps): Rea
                 return (
                   <div
                     key={item.id}
-                    className={`flex items-center gap-3 px-4 py-3 hover:bg-[#111] transition-colors ${!item.is_published ? "opacity-50" : ""}`}
+                    className={`flex items-center gap-3 px-4 py-3 hover:bg-[#111] transition-colors ${!item.is_published ? "opacity-60" : ""}`}
                   >
                     <div className="w-9 h-9 bg-[#1a1a1a] rounded-lg flex items-center justify-center flex-shrink-0">
                       <Icon className={`w-4 h-4 ${iconCls}`} />
@@ -270,9 +288,27 @@ export function GymContentClient({ initialContent }: GymContentClientProps): Rea
                       {item.description && (
                         <p className="text-[11px] text-[#555] truncate">{item.description}</p>
                       )}
+                      {/* Plan chips en vista lista */}
+                      {item.plan_ids.length > 0 && (
+                        <div className="flex gap-1 mt-0.5">
+                          {item.plan_ids.map((pid) => (
+                            <span
+                              key={pid}
+                              className="px-1 py-px rounded text-[9px] font-medium bg-[rgba(255,94,20,0.1)] text-[#FF5E14]"
+                            >
+                              {planMap[pid] ?? "Plan"}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                     <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold flex-shrink-0 ${badgeCls}`}>
                       {typeLabel}
+                    </span>
+                    {/* Vistas */}
+                    <span className="flex items-center gap-1 text-[10px] text-[#444] flex-shrink-0 w-12 justify-end">
+                      <BarChart2 className="w-3 h-3" />
+                      {item.view_count}
                     </span>
                     <div className="flex items-center gap-1.5 flex-shrink-0">
                       <button
@@ -281,6 +317,12 @@ export function GymContentClient({ initialContent }: GymContentClientProps): Rea
                       >
                         {item.is_published ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
                       </button>
+                      <a
+                        href={`/admin/content/${item.id}/edit`}
+                        className="h-6 w-6 flex items-center justify-center bg-[#161616] border border-[#222] rounded hover:border-[#FF5E14] hover:text-[#FF5E14] text-[#555] transition-colors"
+                      >
+                        <Pencil className="w-3 h-3" />
+                      </a>
                       <button
                         onClick={() => handleDelete(item)}
                         className="h-6 w-6 flex items-center justify-center bg-[#161616] border border-[#222] rounded hover:border-[#EF4444] hover:text-[#EF4444] text-[#555] transition-colors"

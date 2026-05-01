@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { Button } from "@core/components/ui/button";
 import { Input } from "@core/components/ui/input";
 import { createMember } from "@/actions/member.actions";
+import { toOpaqueId } from "@/lib/utils/opaque-id";
 import type { MembershipPlan } from "@/types/database";
 
 const formSchema = z.object({
@@ -91,7 +92,7 @@ export function AddMemberForm({ plans }: AddMemberFormProps): React.ReactNode {
 
     if (result.success) {
       toast.success("Miembro creado y email de invitación enviado");
-      router.push(`/admin/members/${result.data?.id}`);
+      router.push(`/admin/members/${result.data?.id ? toOpaqueId(result.data.id) : ""}`);
     } else {
       const error = typeof result.error === "string"
         ? result.error

@@ -2,7 +2,7 @@
 
 import {
   Users,
-  DollarSign,
+  AlertTriangle,
   TrendingUp,
   FileText,
   AlertCircle,
@@ -13,15 +13,15 @@ import {
   ArrowUpRight,
   Clock,
   CheckCircle,
-  XCircle,
   Activity,
+  FileCheck,
 } from "lucide-react";
 import Link from "next/link";
 import { getAdminStats } from "@core/actions/admin.actions";
-import { getOccupancy, getAttendanceLogs } from "@/actions/checkin.actions";
+import { getOccupancy, getAttendanceLogs, getWeeklyAttendanceTrend } from "@/actions/checkin.actions";
+import { getExpiringMembershipsCount } from "@/actions/member.actions";
 import { getWeekSchedule } from "@/actions/calendar.actions";
 import { getChallenges } from "@/actions/challenge.actions";
-import { formatPrice, formatDate } from "@/lib/utils";
 import { themeConfig } from "@/lib/theme";
 
 export default async function AdminDashboardPage(): Promise<React.ReactNode> {
@@ -29,12 +29,14 @@ export default async function AdminDashboardPage(): Promise<React.ReactNode> {
   const startOfDay = new Date(now); startOfDay.setHours(0, 0, 0, 0);
   const endOfDay   = new Date(now); endOfDay.setHours(23, 59, 59, 999);
 
-  const [stats, occupancy, todayAttendance, todayClasses, challenges] = await Promise.all([
+  const [stats, occupancy, todayAttendance, todayClasses, challenges, expiringCount, weeklyTrend] = await Promise.all([
     getAdminStats(),
-    themeConfig.features.gym_qr_checkin   ? getOccupancy()                                               : Promise.resolve(null),
-    themeConfig.features.gym_qr_checkin   ? getAttendanceLogs({ today: true })                           : Promise.resolve([]),
-    themeConfig.features.gym_calendar     ? getWeekSchedule(startOfDay.toISOString(), endOfDay.toISOString()) : Promise.resolve([]),
-    themeConfig.features.gym_challenges   ? getChallenges()                                               : Promise.resolve([]),
+    themeConfig.features.gym_qr_checkin ? getOccupancy()                                                    : Promise.resolve(null),
+    themeConfig.features.gym_qr_checkin ? getAttendanceLogs({ today: true })                                : Promise.resolve([]),
+    themeConfig.features.gym_calendar   ? getWeekSchedule(startOfDay.toISOString(), endOfDay.toISOString()) : Promise.resolve([]),
+    themeConfig.features.gym_challenges ? getChallenges()                                                    : Promise.resolve([]),
+    getExpiringMembershipsCount(),
+    themeConfig.features.gym_qr_checkin ? getWeeklyAttendanceTrend()                                        : Promise.resolve([]),
   ]);
 
   const activeChallenges = challenges.filter(
@@ -135,13 +137,13 @@ export default async function AdminDashboardPage(): Promise<React.ReactNode> {
             href="/admin/members"
           />
           <StatCard
-            icon={DollarSign}
-            iconColor="#22C55E"
-            gradientClass="stat-gradient-green"
-            value={formatPrice(stats.monthlyRevenue, "CRC")}
-            label="Ingresos del mes"
-            sub={now.toLocaleDateString("es-CR", { month: "long", year: "numeric" })}
-            href="/admin/payments"
+            icon={AlertTriangle}
+            iconColor={expiringCount === 0 ? "#555" : expiringCount <= 3 ? "#FACC15" : "#EF4444"}
+            gradientClass="stat-gradient-yellow"
+            value={expiringCount}
+            label="Por vencer"
+            sub="Próximos 7 días"
+            href="/admin/members?status=expiring"
           />
           <StatCard
             icon={TrendingUp}
@@ -257,6 +259,11 @@ export default async function AdminDashboardPage(): Promise<React.ReactNode> {
             )}
           </div>
         </section>
+      )}
+
+      {/* ── Tendencia de asistencia semanal ───────────────────────────────────── */}
+      {themeConfig.features.gym_qr_checkin && weeklyTrend.length > 0 && (
+        <AttendanceTrendWidget data={weeklyTrend} />
       )}
 
       {/* ── Grid inferior: clases de hoy + check-ins recientes ───────────────── */}
@@ -388,7 +395,7 @@ export default async function AdminDashboardPage(): Promise<React.ReactNode> {
         </p>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
           <QuickAction href="/admin/members"    icon={Users}       label="Miembros"      color="#38BDF8" />
-          <QuickAction href="/admin/payments"   icon={DollarSign}  label="Revisar pagos" color="#22C55E" />
+          <QuickAction href="/admin/payments"   icon={FileCheck}   label="Revisar pagos" color="#22C55E" />
           {themeConfig.features.gym_routines && (
             <QuickAction href="/admin/routines/new"  icon={Dumbbell}    label="Nueva rutina"  color="#FF5E14" />
           )}
@@ -405,6 +412,127 @@ export default async function AdminDashboardPage(): Promise<React.ReactNode> {
 }
 
 /* ── Componentes auxiliares de esta página ─────────────────────────────────── */
+
+interface AttendanceTrendWidgetProps {
+  data: { date: string; label: string; count: number }[];
+}
+
+function AttendanceTrendWidget({ data }: AttendanceTrendWidgetProps) {
+  const max = Math.max(...data.map((d) => d.count), 1);
+  const total = data.reduce((s, d) => s + d.count, 0);
+  const today = new Date().toISOString().split("T")[0];
+  const BAR_MAX_PX = 52;
+
+  return (
+    <section>
+      <div className="flex items-center justify-between mb-3">
+        <p
+          className="text-xs font-semibold uppercase tracking-widest"
+          style={{ color: "var(--gym-text-ghost)" }}
+        >
+          Asistencia — últimos 7 días
+        </p>
+        <Link href="/admin/occupancy" className="text-xs font-medium" style={{ color: "#FF5E14" }}>
+          Ver historial →
+        </Link>
+      </div>
+      <div
+        className="px-6 py-5 rounded-xl flex items-center gap-8"
+        style={{ backgroundColor: "var(--gym-bg-card)", border: "1px solid var(--gym-border)" }}
+      >
+        {/* Resumen numérico */}
+        <div className="shrink-0 pr-8 border-r" style={{ borderColor: "var(--gym-border)" }}>
+          <p
+            className="text-3xl font-bold tracking-tight"
+            style={{ fontFamily: "var(--font-barlow)", color: "var(--gym-text-primary)" }}
+          >
+            {total}
+          </p>
+          <p className="text-xs font-medium mt-0.5" style={{ color: "var(--gym-text-secondary)" }}>
+            check-ins
+          </p>
+          <p className="text-[10px] mt-0.5" style={{ color: "var(--gym-text-ghost)" }}>
+            esta semana
+          </p>
+        </div>
+
+        {/* Barras */}
+        <div className="flex-1">
+          {/* Contenedor de barras con altura fija — las barras crecen desde abajo */}
+          <div className="flex items-end gap-2" style={{ height: `${BAR_MAX_PX}px` }}>
+            {data.map((day) => {
+              const isToday = day.date === today;
+              const barH =
+                day.count === 0
+                  ? 3
+                  : Math.max(Math.round((day.count / max) * BAR_MAX_PX), 6);
+              return (
+                <div
+                  key={day.date}
+                  className="flex-1 flex flex-col justify-end"
+                  style={{ height: `${BAR_MAX_PX}px` }}
+                >
+                  {day.count > 0 && (
+                    <p
+                      className="text-[9px] text-center font-semibold mb-1"
+                      style={{ color: isToday ? "#FF5E14" : "#555" }}
+                    >
+                      {day.count}
+                    </p>
+                  )}
+                  <div
+                    className="w-full rounded-sm"
+                    style={{
+                      height: `${barH}px`,
+                      backgroundColor: isToday
+                        ? "#FF5E14"
+                        : day.count > 0
+                        ? "rgba(255,94,20,0.3)"
+                        : "#1a1a1a",
+                    }}
+                  />
+                </div>
+              );
+            })}
+          </div>
+          {/* Etiquetas de día */}
+          <div className="flex gap-2 mt-2">
+            {data.map((day) => {
+              const isToday = day.date === today;
+              return (
+                <div key={day.date} className="flex-1 text-center">
+                  <span
+                    className="text-[9px] font-semibold"
+                    style={{ color: isToday ? "#FF5E14" : "#333" }}
+                  >
+                    {day.label}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Leyenda */}
+        <div className="shrink-0 hidden lg:flex flex-col gap-2 text-[10px]" style={{ color: "var(--gym-text-ghost)" }}>
+          <div className="flex items-center gap-1.5">
+            <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: "#FF5E14" }} />
+            <span>Hoy</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: "rgba(255,94,20,0.3)" }} />
+            <span>Días anteriores</span>
+          </div>
+          {max > 0 && (
+            <p className="mt-1" style={{ color: "var(--gym-text-ghost)" }}>
+              Pico: {max} asist.
+            </p>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
 
 interface StatCardProps {
   icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;

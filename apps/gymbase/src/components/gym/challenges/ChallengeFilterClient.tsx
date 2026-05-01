@@ -48,7 +48,7 @@ export function ChallengeFilterClient({ challenges }: ChallengeFilterClientProps
           <button
             key={f}
             onClick={() => setFilter(f)}
-            className={`h-6 px-2.5 rounded-full text-[10px] font-semibold border transition-all flex items-center gap-1 ${
+            className={`h-6 px-2.5 rounded-full text-[10px] font-semibold border transition-all flex items-center gap-1 cursor-pointer ${
               filter === f
                 ? f === "active"
                   ? "bg-[rgba(34,197,94,0.1)] border-[rgba(34,197,94,0.25)] text-[#22C55E]"

@@ -18,6 +18,13 @@ const MUSCLE_LABELS: Record<string, string> = {
   core: "Core", cardio: "Cardio", full_body: "Cuerpo completo",
 };
 
+// Mapeo inverso: etiqueta en español → valor en DB (inglés)
+const MUSCLE_DB_VALUE: Record<string, string> = {
+  "Pecho": "chest", "Espalda": "back", "Hombros": "shoulders",
+  "Bíceps": "biceps", "Tríceps": "triceps", "Piernas": "legs",
+  "Core": "core", "Cardio": "cardio",
+};
+
 const DIFFICULTY_DOT: Record<string, string> = {
   beginner: "bg-emerald-500",
   intermediate: "bg-amber-400",
@@ -69,10 +76,11 @@ export function RoutineBuilderClient({ routine, exercises }: RoutineBuilderClien
   );
 
   // Filtrar ejercicios base por músculo y texto (incluyendo coincidencias en variantes)
+  // MUSCLE_DB_VALUE convierte la etiqueta española del filtro al valor inglés del campo en DB
   const filteredExercises = baseExercises.filter((ex) => {
     const matchesMuscle =
       muscleFilter === "Todos" ||
-      ex.muscle_group?.toLowerCase().includes(muscleFilter.toLowerCase());
+      ex.muscle_group === MUSCLE_DB_VALUE[muscleFilter];
     const matchesSearch =
       !deferredSearch ||
       ex.name.toLowerCase().includes(deferredSearch.toLowerCase()) ||

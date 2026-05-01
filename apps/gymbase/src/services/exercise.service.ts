@@ -157,6 +157,7 @@ export async function createPrivateExercise(
     equipment?: string;
     difficulty?: string;
     description?: string;
+    video_url?: string;
   }
 ): Promise<import("@/types/gym-routines").Exercise> {
   const { data: exercise, error } = await supabase
@@ -168,6 +169,7 @@ export async function createPrivateExercise(
       equipment: data.equipment ?? null,
       difficulty: data.difficulty ?? "beginner",
       description: data.description ?? null,
+      video_url: data.video_url ?? null,
       is_global: false,
       is_timed: false,
       is_private_to_user: userId,

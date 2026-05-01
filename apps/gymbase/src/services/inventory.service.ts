@@ -10,6 +10,8 @@ import type {
   ProductSalesSummary,
   InventoryStats,
 } from "@/types/gym-inventory";
+import { buildPaginationRange, buildPaginatedResult } from "@core/types/pagination";
+import type { PaginatedResult } from "@core/types/pagination";
 
 // ─── Productos ────────────────────────────────────────────────────────────────
 
@@ -103,6 +105,44 @@ export async function fetchLowStockCount(
     .eq("is_active", true);
   if (error) throw error;
   return (data ?? []).filter((p) => p.current_stock <= p.min_stock_alert).length;
+}
+
+// Paginación server-side para la tabla de inventario — onlyLowStock usa filtrado en memoria
+// porque PostgREST no soporta comparación directa entre dos columnas (current_stock <= min_stock_alert)
+export async function fetchProductsPaginated(
+  supabase: SupabaseClient,
+  orgId: string,
+  params: {
+    page: number;
+    pageSize: number;
+    search?: string;
+    category?: ProductCategory;
+    onlyLowStock?: boolean;
+  }
+): Promise<PaginatedResult<InventoryProduct>> {
+  const PRODUCT_SELECT = "id,org_id,name,description,sku,category,unit,cost_price,sale_price,current_stock,min_stock_alert,image_url,is_active,created_at,updated_at";
+  const { from, to } = buildPaginationRange(params);
+
+  // onlyLowStock necesita comparar dos columnas — se fetcha todo y se pagina en memoria
+  if (params.onlyLowStock) {
+    let q = supabase.from("gym_inventory_products").select(PRODUCT_SELECT).eq("org_id", orgId).eq("is_active", true).order("name");
+    if (params.search) q = q.ilike("name", `%${params.search}%`);
+    if (params.category) q = q.eq("category", params.category);
+    const { data, error } = await q;
+    if (error) throw error;
+    const all = ((data ?? []) as InventoryProduct[]).filter((p) => p.current_stock <= p.min_stock_alert);
+    return buildPaginatedResult(all.slice(from, to + 1), all.length, params);
+  }
+
+  let countQ = supabase.from("gym_inventory_products").select("*", { count: "exact", head: true }).eq("org_id", orgId).eq("is_active", true);
+  let dataQ = supabase.from("gym_inventory_products").select(PRODUCT_SELECT).eq("org_id", orgId).eq("is_active", true).order("name").range(from, to);
+
+  if (params.search) { countQ = countQ.ilike("name", `%${params.search}%`); dataQ = dataQ.ilike("name", `%${params.search}%`); }
+  if (params.category) { countQ = countQ.eq("category", params.category); dataQ = dataQ.eq("category", params.category); }
+
+  const [{ count }, { data, error }] = await Promise.all([countQ, dataQ]);
+  if (error) throw error;
+  return buildPaginatedResult((data ?? []) as InventoryProduct[], count ?? 0, params);
 }
 
 // ─── Movimientos ──────────────────────────────────────────────────────────────
@@ -213,6 +253,43 @@ export async function fetchSales(
   const { data, error } = await query;
   if (error) throw error;
   return (data ?? []) as unknown as Sale[];
+}
+
+// Versión paginada de fetchSales — count + data en paralelo con los mismos filtros
+export async function fetchSalesPaginated(
+  supabase: SupabaseClient,
+  orgId: string,
+  params: {
+    page: number;
+    pageSize: number;
+    dateFrom?: string;
+    dateTo?: string;
+    paymentMethod?: SalePaymentMethod;
+  }
+): Promise<PaginatedResult<Sale>> {
+  const { from, to } = buildPaginationRange(params);
+
+  const SALE_SELECT = `
+    id, org_id, sold_by, member_id, payment_method, total_amount, notes, created_at,
+    seller:profiles!gym_sales_sold_by_fkey(full_name),
+    member:profiles!gym_sales_member_id_fkey(full_name),
+    items:gym_sale_items(
+      id, sale_id, product_id, quantity, unit_price, subtotal,
+      product:gym_inventory_products(name, unit)
+    )
+  `;
+
+  let countQ = supabase.from("gym_sales").select("*", { count: "exact", head: true }).eq("org_id", orgId);
+  let dataQ = supabase.from("gym_sales").select(SALE_SELECT).eq("org_id", orgId).order("created_at", { ascending: false }).range(from, to);
+
+  if (params.dateFrom) { countQ = countQ.gte("created_at", params.dateFrom); dataQ = dataQ.gte("created_at", params.dateFrom); }
+  if (params.dateTo)   { countQ = countQ.lte("created_at", params.dateTo);   dataQ = dataQ.lte("created_at", params.dateTo); }
+  if (params.paymentMethod) { countQ = countQ.eq("payment_method", params.paymentMethod); dataQ = dataQ.eq("payment_method", params.paymentMethod); }
+
+  const [{ count }, { data, error }] = await Promise.all([countQ, dataQ]);
+  if (error) throw error;
+
+  return buildPaginatedResult((data ?? []) as unknown as Sale[], count ?? 0, params);
 }
 
 // ─── Stats ────────────────────────────────────────────────────────────────────

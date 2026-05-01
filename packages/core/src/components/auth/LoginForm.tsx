@@ -15,7 +15,11 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
-export function LoginForm() {
+interface LoginFormProps {
+  oauthError?: string | null;
+}
+
+export function LoginForm({ oauthError }: LoginFormProps = {}) {
   const [serverError, setServerError] = useState<string | null>(null);
   const [isPending, setIsPending] = useState(false);
 
@@ -58,7 +62,14 @@ export function LoginForm() {
 
       <form onSubmit={handleSubmit(onSubmit)}>
         <CardContent className="space-y-4">
-          {/* Error general del servidor */}
+          {/* Error de OAuth (viene de searchParams de la página) */}
+          {oauthError && (
+            <Alert variant="destructive">
+              <AlertDescription>{oauthError}</AlertDescription>
+            </Alert>
+          )}
+
+          {/* Error general del servidor (email/password) */}
           {serverError && (
             <Alert variant="destructive">
               <AlertDescription>{serverError}</AlertDescription>

@@ -129,8 +129,7 @@ export async function manualCheckin(input: unknown): Promise<ActionResult<Attend
     return { success: true, data: checkin };
   } catch (error) {
     console.error("[manualCheckin] Error:", error);
-    const message = error instanceof Error ? error.message : "Error al registrar la asistencia";
-    return { success: false, error: message };
+    return { success: false, error: "Error al registrar la asistencia. Intenta de nuevo." };
   }
 }
 
@@ -165,8 +164,14 @@ export async function getOccupancy(): Promise<OccupancyData> {
     const orgId = await getOrgId();
     // Cerrar check-ins huérfanos antes de contar para que la cifra sea exacta
     await closeStaleCheckins(supabase, orgId);
-    const current = await fetchCurrentOccupancy(supabase, orgId);
-    const capacity = DEFAULT_GYM_CAPACITY;
+
+    const [current, { data: org }] = await Promise.all([
+      fetchCurrentOccupancy(supabase, orgId),
+      // Leer el aforo configurado por el admin desde organizations
+      supabase.from("organizations").select("max_capacity").eq("id", orgId).single(),
+    ]);
+
+    const capacity = org?.max_capacity ?? DEFAULT_GYM_CAPACITY;
     const percentage = Math.min(100, Math.round((current / capacity) * 100));
     const level = getOccupancyLevel(percentage);
 
@@ -194,7 +199,37 @@ export async function getAttendanceLogs(
   }
 }
 
-// Obtiene el conteo de asistencias del mes actual por usuario — para la tabla de miembros admin
+// Obtiene conteos de asistencia del mes actual para un subconjunto de user_ids vía SQL GROUP BY
+// Reemplaza el loop JS — solo consulta los usuarios de la página actual para no sobrecargar
+export async function getMonthlyAttendanceCountsForUsers(
+  userIds: string[]
+): Promise<Record<string, number>> {
+  if (userIds.length === 0) return {};
+  const user = await getCurrentUser();
+  if (!user || !["admin", "trainer"].includes(user.role)) return {};
+
+  const supabase = await createClient();
+  try {
+    const orgId = await getOrgId();
+    const { data, error } = await supabase.rpc("get_monthly_attendance_counts", {
+      p_org_id: orgId,
+      p_user_ids: userIds,
+    });
+
+    if (error) throw new Error(error.message);
+
+    const counts: Record<string, number> = {};
+    for (const row of data ?? []) {
+      counts[row.user_id as string] = Number(row.attendance_count);
+    }
+    return counts;
+  } catch (error) {
+    console.error("[getMonthlyAttendanceCountsForUsers] Error:", error);
+    return {};
+  }
+}
+
+// Versión legacy — mantiene compatibilidad con otros llamadores existentes
 export async function getMonthlyAttendanceCounts(): Promise<Record<string, number>> {
   const user = await getCurrentUser();
   if (!user || !["admin", "trainer"].includes(user.role)) return {};
@@ -214,7 +249,6 @@ export async function getMonthlyAttendanceCounts(): Promise<Record<string, numbe
 
     if (error) throw new Error(error.message);
 
-    // Agrupar conteos por user_id en memoria (más portable que COUNT GROUP BY)
     const counts: Record<string, number> = {};
     for (const row of data ?? []) {
       counts[row.user_id] = (counts[row.user_id] ?? 0) + 1;
@@ -226,10 +260,40 @@ export async function getMonthlyAttendanceCounts(): Promise<Record<string, numbe
   }
 }
 
+// Obtiene una página de logs de asistencia para la tabla del tab Asistencias — paginación local
+export async function getMemberAttendanceLogsPaginated(
+  memberId: string,
+  page: number,
+  pageSize = 20
+): Promise<{ data: AttendanceLog[]; total: number }> {
+  const user = await getCurrentUser();
+  if (!user || user.role !== "admin" && user.role !== "owner") return { data: [], total: 0 };
+
+  const supabase = await createClient();
+  const oneYearAgo = new Date();
+  oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+  const from = (page - 1) * pageSize;
+  const to = from + pageSize - 1;
+
+  const { data, count, error } = await supabase
+    .from("gym_attendance_logs")
+    .select("id, user_id, check_in_at, check_out_at, duration_minutes", { count: "exact" })
+    .eq("user_id", memberId)
+    .gte("check_in_at", oneYearAgo.toISOString())
+    .order("check_in_at", { ascending: false })
+    .range(from, to);
+
+  if (error) {
+    console.error("[getMemberAttendanceLogsPaginated] Error:", error);
+    return { data: [], total: 0 };
+  }
+  return { data: (data ?? []) as AttendanceLog[], total: count ?? 0 };
+}
+
 // Obtiene todos los logs de asistencia de un miembro específico para visualizaciones
 export async function getMemberAttendanceLogs(memberId: string): Promise<AttendanceLog[]> {
   const user = await getCurrentUser();
-  if (!user || user.role !== "admin") return [];
+  if (!user || user.role !== "admin" && user.role !== "owner") return [];
 
   const supabase = await createClient();
   const oneYearAgo = new Date();
@@ -269,6 +333,43 @@ export async function getMyAttendanceLogs(limit = 30): Promise<AttendanceLog[]> 
     console.error("[getMyAttendanceLogs] Error:", error);
     return [];
   }
+}
+
+// Retorna los check-ins agrupados por día para los últimos 7 días — widget de tendencia en dashboard
+export async function getWeeklyAttendanceTrend(): Promise<{ date: string; label: string; count: number }[]> {
+  const user = await getCurrentUser();
+  if (!user || !["admin", "trainer"].includes(user.role)) return [];
+
+  const supabase = await createClient();
+  const orgId = await getOrgId();
+
+  // Generar array de los últimos 7 días (hoy incluido) en fecha ISO "YYYY-MM-DD"
+  const days = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() - (6 - i));
+    return d.toISOString().split("T")[0];
+  });
+
+  const { data } = await supabase
+    .from("gym_attendance_logs")
+    .select("check_in_at")
+    .eq("org_id", orgId)
+    .gte("check_in_at", `${days[0]}T00:00:00.000Z`);
+
+  // Agrupar en memoria (7 días = volumen pequeño para esta agregación)
+  const counts: Record<string, number> = {};
+  for (const row of data ?? []) {
+    const dateKey = row.check_in_at.split("T")[0];
+    counts[dateKey] = (counts[dateKey] ?? 0) + 1;
+  }
+
+  const DAY_LABELS: Record<number, string> = { 0: "Do", 1: "Lu", 2: "Ma", 3: "Mi", 4: "Ju", 5: "Vi", 6: "Sá" };
+
+  return days.map((date) => ({
+    date,
+    label: DAY_LABELS[new Date(`${date}T12:00:00Z`).getUTCDay()],
+    count: counts[date] ?? 0,
+  }));
 }
 
 // Obtiene el check-in abierto del usuario actual (para el portal)

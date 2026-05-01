@@ -16,7 +16,11 @@ import {
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient, getCurrentUser, createAdminClient } from "@/lib/supabase/server";
+import { buildPaginationRange, buildPaginatedResult } from "@core/types/pagination";
 import type { ActionResult, PaymentProofWithDetails, Subscription } from "@/types/database";
+import type { PaginatedResult } from "@core/types/pagination";
+
+export type PaymentStatusFilter = "all" | "pending" | "approved" | "rejected";
 
 export async function approvePayment(formData: unknown): Promise<ActionResult> {
   return coreApprovePayment(formData);
@@ -46,57 +50,97 @@ export async function getPendingPayments(): Promise<PaymentProofWithDetails[]> {
   return coreGetPendingPayments();
 }
 
-// Obtiene todos los comprobantes de pago (cualquier estado) para el panel admin
-export async function getAllPaymentsAdmin(): Promise<PaymentProofWithDetails[]> {
+// Obtiene comprobantes de pago paginados con filtro de estado para el panel admin
+export async function getAllPaymentsAdmin(
+  params: { page: number; pageSize: number; status?: PaymentStatusFilter } = { page: 1, pageSize: 25 }
+): Promise<PaginatedResult<PaymentProofWithDetails>> {
   const user = await getCurrentUser();
-  if (!user || user.role !== "admin") return [];
+  const empty = buildPaginatedResult([], 0, params);
+  if (!user || user.role !== "admin" && user.role !== "owner") return empty;
+
+  const supabase = await createClient();
+  const { from, to } = buildPaginationRange(params);
+
+  const PAYMENT_SELECT = `
+    id, subscription_id, user_id, file_url, file_path, amount,
+    payment_method, notes, status, reviewed_by, reviewed_at,
+    rejection_reason, created_at,
+    profile:profiles!payment_proofs_user_id_fkey(id, full_name, email, avatar_url),
+    subscription:subscriptions!payment_proofs_subscription_id_fkey(
+      id, status, starts_at, expires_at,
+      plan:membership_plans(id, name, price, currency, duration_days)
+    )
+  `;
+
+  try {
+    // Ejecutar count y data en paralelo — filtro de estado aplicado a ambas queries
+    let countQ = supabase.from("payment_proofs").select("*", { count: "exact", head: true });
+    let dataQ = supabase
+      .from("payment_proofs")
+      .select(PAYMENT_SELECT)
+      .order("created_at", { ascending: false })
+      .range(from, to);
+
+    if (params.status && params.status !== "all") {
+      countQ = countQ.eq("status", params.status);
+      dataQ = dataQ.eq("status", params.status);
+    }
+
+    const [{ count }, { data, error }] = await Promise.all([countQ, dataQ]);
+    if (error) throw new Error(error.message);
+
+    const rows = data ?? [];
+
+    // Resolver amounts antes de firmar URLs
+    const withAmounts = rows.map((proof) => {
+      const subscription = proof.subscription as { plan?: { price?: number } } | null;
+      return { ...proof, amount: proof.amount ?? subscription?.plan?.price ?? null };
+    });
+
+    // Firmar todas las URLs en un solo llamado al storage (evita N+1)
+    const adminClient = createAdminClient();
+    const paths = withAmounts.filter((p) => p.file_path).map((p) => p.file_path);
+    const { data: signedData } = paths.length > 0
+      ? await adminClient.storage.from("payment-proofs").createSignedUrls(paths, 3600)
+      : { data: [] };
+
+    const signedMap = new Map((signedData ?? []).map((s) => [s.path, s.signedUrl]));
+
+    const proofs = withAmounts.map((proof) => ({
+      ...proof,
+      file_url: (proof.file_path && signedMap.get(proof.file_path)) || proof.file_url,
+    }));
+
+    return buildPaginatedResult(proofs as unknown as PaymentProofWithDetails[], count ?? 0, params);
+  } catch (error) {
+    console.error("[getAllPaymentsAdmin] Error:", error);
+    return empty;
+  }
+}
+
+// Cuenta comprobantes pendientes para el subtitle del topbar — query ligera sin datos
+export async function getPendingPaymentsCount(): Promise<number> {
+  const user = await getCurrentUser();
+  if (!user || user.role !== "admin" && user.role !== "owner") return 0;
 
   const supabase = await createClient();
   try {
-    const { data, error } = await supabase
+    const { count, error } = await supabase
       .from("payment_proofs")
-      .select(`
-        id, subscription_id, user_id, file_url, file_path, amount,
-        payment_method, notes, status, reviewed_by, reviewed_at,
-        rejection_reason, created_at,
-        profile:profiles!payment_proofs_user_id_fkey(id, full_name, email, avatar_url),
-        subscription:subscriptions!payment_proofs_subscription_id_fkey(
-          id, status, starts_at, expires_at,
-          plan:membership_plans(id, name, price, currency, duration_days)
-        )
-      `)
-      .order("created_at", { ascending: false })
-      .limit(100);
-
+      .select("*", { count: "exact", head: true })
+      .eq("status", "pending");
     if (error) throw new Error(error.message);
-
-    // Generar URLs firmadas con el admin client para omitir las políticas de storage RLS
-    const adminClient = createAdminClient();
-    const proofs = await Promise.all(
-      (data ?? []).map(async (proof) => {
-        // Fallback: si amount es NULL en DB, usar el precio del plan
-        const subscription = proof.subscription as { plan?: { price?: number } } | null;
-        const amount = proof.amount ?? subscription?.plan?.price ?? null;
-
-        if (!proof.file_path) return { ...proof, amount };
-        const { data: signed } = await adminClient.storage
-          .from("payment-proofs")
-          .createSignedUrl(proof.file_path, 3600);
-        return { ...proof, amount, file_url: signed?.signedUrl ?? proof.file_url };
-      })
-    );
-
-    return proofs as unknown as PaymentProofWithDetails[];
+    return count ?? 0;
   } catch (error) {
-    console.error("[getAllPaymentsAdmin] Error:", error);
-    return [];
+    console.error("[getPendingPaymentsCount] Error:", error);
+    return 0;
   }
 }
 
 // Obtiene el historial de pagos de un miembro específico (para el tab Pagos en su perfil)
 export async function getMemberPayments(memberId: string): Promise<PaymentProofWithDetails[]> {
   const user = await getCurrentUser();
-  if (!user || user.role !== "admin") return [];
+  if (!user || user.role !== "admin" && user.role !== "owner") return [];
 
   const supabase = await createClient();
   try {
@@ -117,21 +161,25 @@ export async function getMemberPayments(memberId: string): Promise<PaymentProofW
 
     if (error) throw new Error(error.message);
 
-    // Signed URLs con adminClient — igual que getAllPaymentsAdmin
-    const adminClient = createAdminClient();
-    const proofs = await Promise.all(
-      (data ?? []).map(async (proof) => {
-        const subscription = proof.subscription as { plan?: { price?: number } } | null;
-        const amount = proof.amount ?? subscription?.plan?.price ?? null;
-        if (!proof.file_path) return { ...proof, amount };
-        const { data: signed } = await adminClient.storage
-          .from("payment-proofs")
-          .createSignedUrl(proof.file_path, 3600);
-        return { ...proof, amount, file_url: signed?.signedUrl ?? proof.file_url };
-      })
-    );
+    const rows = data ?? [];
+    const withAmounts = rows.map((proof) => {
+      const subscription = proof.subscription as { plan?: { price?: number } } | null;
+      return { ...proof, amount: proof.amount ?? subscription?.plan?.price ?? null };
+    });
 
-    return proofs as unknown as PaymentProofWithDetails[];
+    // Firmar todas las URLs en un solo llamado al storage (evita N+1)
+    const adminClient = createAdminClient();
+    const paths = withAmounts.filter((p) => p.file_path).map((p) => p.file_path);
+    const { data: signedData } = paths.length > 0
+      ? await adminClient.storage.from("payment-proofs").createSignedUrls(paths, 3600)
+      : { data: [] };
+
+    const signedMap = new Map((signedData ?? []).map((s) => [s.path, s.signedUrl]));
+
+    return withAmounts.map((proof) => ({
+      ...proof,
+      file_url: (proof.file_path && signedMap.get(proof.file_path)) || proof.file_url,
+    })) as unknown as PaymentProofWithDetails[];
   } catch (error) {
     console.error("[getMemberPayments] Error:", error);
     return [];
@@ -163,7 +211,7 @@ export async function registerManualPayment(input: {
 // y puede encolar el nuevo período si aún está vigente (no pierde tiempo pagado).
 export async function renewManualSubscription(input: unknown): Promise<ActionResult> {
   const user = await getCurrentUser();
-  if (!user || user.role !== "admin") return { success: false, error: "Sin permisos" };
+  if (!user || user.role !== "admin" && user.role !== "owner") return { success: false, error: "Sin permisos" };
 
   const parsed = renewManualSubscriptionSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: "Datos inválidos" };

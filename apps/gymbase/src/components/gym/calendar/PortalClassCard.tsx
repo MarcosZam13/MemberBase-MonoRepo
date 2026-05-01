@@ -3,7 +3,8 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, Clock } from "lucide-react";
+import { toast } from "sonner";
 import { bookClass, cancelMyBooking } from "@/actions/calendar.actions";
 import type { ScheduledClass, ClassBooking } from "@/types/gym-calendar";
 
@@ -14,7 +15,6 @@ interface PortalClassCardProps {
 
 export function PortalClassCard({ scheduledClass, myBooking }: PortalClassCardProps): React.ReactNode {
   const [isLoading, setIsLoading] = useState(false);
-  const [feedback, setFeedback] = useState<string | null>(null);
 
   const color = scheduledClass.class_type?.color ?? "#FF5E14";
   const startTime = new Date(scheduledClass.starts_at).toLocaleTimeString("es-CR", { hour: "2-digit", minute: "2-digit" });
@@ -23,18 +23,31 @@ export function PortalClassCard({ scheduledClass, myBooking }: PortalClassCardPr
   const maxCapacity = scheduledClass.max_capacity ?? 0;
   const capacityPct = maxCapacity > 0 ? Math.min(100, (bookings / maxCapacity) * 100) : 0;
   const isFull = maxCapacity > 0 && bookings >= maxCapacity;
-  const isAlmostFull = capacityPct >= 80 && !isFull;
 
   // Color de la barra de capacidad según el llenado
   const barColor = capacityPct >= 90 ? "#EF4444" : capacityPct >= 70 ? "#FACC15" : color;
 
+  // Estado de la reserva del miembro
+  const isWaitlisted = myBooking?.status === "waitlist";
+  const isConfirmed = myBooking?.status === "confirmed";
+
+  // Borde con acento naranja si hay reserva confirmada, amarillo si está en espera
+  const cardBorder = isConfirmed
+    ? "border-[rgba(255,94,20,0.3)] bg-[#140d06]"
+    : isWaitlisted
+    ? "border-[rgba(250,204,21,0.25)] bg-[#111108]"
+    : "border-[#1e1e1e] hover:border-[#2a2a2a]";
+
   async function handleBook(): Promise<void> {
     setIsLoading(true);
-    setFeedback(null);
     const result = await bookClass({ class_id: scheduledClass.id });
-    if (!result.success) {
+    if (result.success) {
+      if (result.data?.waitlisted) {
+        toast.info("Estás en lista de espera. Te notificaremos si se libera un cupo.");
+      }
+    } else {
       const msg = typeof result.error === "string" ? result.error : "Error al reservar";
-      setFeedback(msg);
+      toast.error(msg);
     }
     setIsLoading(false);
   }
@@ -42,14 +55,18 @@ export function PortalClassCard({ scheduledClass, myBooking }: PortalClassCardPr
   async function handleCancel(): Promise<void> {
     if (!myBooking) return;
     setIsLoading(true);
-    await cancelMyBooking(myBooking.id);
+    const result = await cancelMyBooking(myBooking.id);
+    if (!result.success) {
+      const msg = typeof result.error === "string" ? result.error : "Error al cancelar";
+      toast.error(msg);
+    }
     setIsLoading(false);
   }
 
   const title = scheduledClass.title || scheduledClass.class_type?.name || "Clase";
 
   return (
-    <div className={`bg-[#111] border rounded-[16px] px-4 py-3.5 transition-all ${myBooking ? "border-[rgba(255,94,20,0.3)] bg-[#140d06]" : "border-[#1e1e1e] hover:border-[#2a2a2a]"}`}>
+    <div className={`bg-[#111] border rounded-[16px] px-4 py-3.5 transition-all ${cardBorder}`}>
       <div className="flex gap-3 items-start mb-3">
         {/* Barra de color izquierda */}
         <div className="w-1 rounded-full self-stretch flex-shrink-0" style={{ backgroundColor: color, minHeight: "36px" }} />
@@ -58,8 +75,7 @@ export function PortalClassCard({ scheduledClass, myBooking }: PortalClassCardPr
         <div className="flex-1 min-w-0">
           <h3 className="text-sm font-semibold text-white truncate">{title}</h3>
           <p className="text-[11px] text-[#555] mt-0.5 flex gap-1.5 flex-wrap">
-            {scheduledClass.instructor_id && <span>Instructor</span>}
-            {scheduledClass.location && <span>· {scheduledClass.location}</span>}
+            {scheduledClass.location && <span>{scheduledClass.location}</span>}
           </p>
         </div>
 
@@ -98,32 +114,48 @@ export function PortalClassCard({ scheduledClass, myBooking }: PortalClassCardPr
         {/* Acciones */}
         {!scheduledClass.is_cancelled && (
           <div className="flex-shrink-0">
-            {myBooking ? (
+            {isConfirmed ? (
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-semibold px-2.5 py-1 rounded-full bg-[rgba(255,94,20,0.1)] border border-[rgba(255,94,20,0.25)] text-[#FF5E14]">
-                  Tu reserva
+                  Reservada
                 </span>
                 <button
                   onClick={handleCancel}
                   disabled={isLoading}
-                  className="text-[11px] px-2.5 py-1 rounded-lg border border-[rgba(255,94,20,0.3)] text-[#FF5E14] hover:bg-[rgba(255,94,20,0.08)] transition-colors disabled:opacity-50"
+                  className="text-[11px] px-2.5 py-1 rounded-lg border border-[rgba(255,94,20,0.3)] text-[#FF5E14] hover:bg-[rgba(255,94,20,0.08)] transition-colors disabled:opacity-50 cursor-pointer"
                 >
                   {isLoading ? <Loader2 className="w-3 h-3 animate-spin inline" /> : "Cancelar"}
                 </button>
               </div>
+            ) : isWaitlisted ? (
+              // Badge de lista de espera + opción a cancelar
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-semibold px-2.5 py-1 rounded-full bg-[rgba(250,204,21,0.1)] border border-[rgba(250,204,21,0.25)] text-[#FACC15] flex items-center gap-1">
+                  <Clock className="w-2.5 h-2.5" />
+                  En espera
+                </span>
+                <button
+                  onClick={handleCancel}
+                  disabled={isLoading}
+                  className="text-[11px] px-2.5 py-1 rounded-lg border border-[rgba(250,204,21,0.2)] text-[#FACC15] hover:bg-[rgba(250,204,21,0.06)] transition-colors disabled:opacity-50 cursor-pointer"
+                >
+                  {isLoading ? <Loader2 className="w-3 h-3 animate-spin inline" /> : "Salir"}
+                </button>
+              </div>
             ) : isFull ? (
+              // Clase llena → entrar a waitlist
               <button
                 onClick={handleBook}
                 disabled={isLoading}
-                className="text-[11px] px-3 py-1.5 rounded-lg font-medium border border-[rgba(250,204,21,0.3)] text-[#FACC15] hover:bg-[rgba(250,204,21,0.08)] transition-colors"
+                className="text-[11px] px-3 py-1.5 rounded-lg font-medium border border-[rgba(250,204,21,0.3)] text-[#FACC15] hover:bg-[rgba(250,204,21,0.08)] transition-colors cursor-pointer"
               >
-                Lista de espera
+                {isLoading ? <Loader2 className="w-3 h-3 animate-spin inline" /> : "Lista de espera"}
               </button>
             ) : (
               <button
                 onClick={handleBook}
                 disabled={isLoading}
-                className="text-[11px] px-3 py-1.5 rounded-lg font-semibold text-white transition-opacity hover:opacity-88 disabled:opacity-50"
+                className="text-[11px] px-3 py-1.5 rounded-lg font-semibold text-white transition-opacity hover:opacity-88 disabled:opacity-50 cursor-pointer"
                 style={{ backgroundColor: color }}
               >
                 {isLoading ? <Loader2 className="w-3 h-3 animate-spin inline" /> : "Reservar"}
@@ -133,7 +165,11 @@ export function PortalClassCard({ scheduledClass, myBooking }: PortalClassCardPr
         )}
       </div>
 
-      {feedback && <p className="text-xs text-[#EF4444] mt-2">{feedback}</p>}
+      {scheduledClass.is_cancelled && (
+        <div className="mt-2 px-2.5 py-1.5 rounded-lg bg-[rgba(239,68,68,0.08)] border border-[rgba(239,68,68,0.2)]">
+          <p className="text-xs text-[#EF4444] font-medium">Clase cancelada</p>
+        </div>
+      )}
     </div>
   );
 }

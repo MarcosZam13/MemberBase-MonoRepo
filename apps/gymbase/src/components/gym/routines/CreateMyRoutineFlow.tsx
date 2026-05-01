@@ -6,7 +6,7 @@ import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
-  ChevronLeft, Plus, Loader2, Check, Search, Lock, Dumbbell, X,
+  ChevronLeft, Plus, Loader2, Check, Search, Lock, Dumbbell, X, Video,
 } from "lucide-react";
 import { createMyRoutine, addDayToMyRoutine, addExerciseToMyDay } from "@/actions/routine.actions";
 import { createMyPrivateExercise } from "@/actions/exercise.actions";
@@ -36,6 +36,7 @@ const MUSCLE_LABELS: Record<string, string> = {
   biceps: "Bíceps", triceps: "Tríceps", quads: "Cuádriceps",
   hamstrings: "Isquiotibiales", glutes: "Glúteos", calves: "Pantorrillas",
   core: "Core", full_body: "Cuerpo completo", cardio: "Cardio",
+  forearms: "Antebrazos", legs: "Piernas",
 };
 
 /* ── Componente principal ─────────────────────────────────────────────────── */
@@ -50,33 +51,48 @@ export function CreateMyRoutineFlow({ exercises }: Props): React.ReactNode {
   const [activeDayId, setActiveDayId] = useState<string | null>(null);
 
   /* ── Estado paso 1 ── */
-  const [name, setName]             = useState("");
+  const [name, setName]               = useState("");
   const [description, setDescription] = useState("");
-  const [isPublic, setIsPublic]     = useState(false);
-  const [creating, setCreating]     = useState(false);
+  const [isPublic, setIsPublic]       = useState(false);
+  const [creating, setCreating]       = useState(false);
 
   /* ── Estado paso 2 ── */
-  const [newDayName, setNewDayName]   = useState("");
-  const [addingDay, setAddingDay]     = useState(false);
+  const [newDayName, setNewDayName]     = useState("");
+  const [addingDay, setAddingDay]       = useState(false);
   const [showDayInput, setShowDayInput] = useState(false);
 
   /* ── Estado paso 3 ── */
-  const [exerciseList, setExerciseList] = useState<Exercise[]>(exercises);
-  const [search, setSearch]             = useState("");
-  const [selectedEx, setSelectedEx]     = useState<Exercise | null>(null);
-  const [params, setParams]             = useState<ExerciseParams>({ sets: "3", reps: "10", rest_seconds: "60", notes: "" });
+  const [exerciseList, setExerciseList]   = useState<Exercise[]>(exercises);
+  const [search, setSearch]               = useState("");
+  const [muscleFilter, setMuscleFilter]   = useState<string>("");
+  const [selectedEx, setSelectedEx]       = useState<Exercise | null>(null);
+  const [params, setParams]               = useState<ExerciseParams>({ sets: "3", reps: "10", rest_seconds: "60", notes: "" });
   const [addingExercise, setAddingExercise] = useState(false);
   const [showPrivateForm, setShowPrivateForm] = useState(false);
-  const [privateExName, setPrivateExName]   = useState("");
-  const [privateExMuscle, setPrivateExMuscle] = useState("");
-  const [creatingPrivate, setCreatingPrivate] = useState(false);
+  const [privateExName, setPrivateExName]       = useState("");
+  const [privateExMuscle, setPrivateExMuscle]   = useState("");
+  const [privateExVideoUrl, setPrivateExVideoUrl] = useState("");
+  const [creatingPrivate, setCreatingPrivate]   = useState(false);
 
-  /* ── Ejercicios filtrados por búsqueda ── */
+  /* ── Grupos musculares presentes en la biblioteca (para los filtros) ── */
+  const availableMuscles = useMemo(() => {
+    const groups = new Set<string>();
+    for (const ex of exerciseList) {
+      if (ex.muscle_group) groups.add(ex.muscle_group);
+    }
+    return [...groups].sort();
+  }, [exerciseList]);
+
+  /* ── Ejercicios filtrados por búsqueda y grupo muscular ── */
   const filteredExercises = useMemo(() => {
-    if (!search.trim()) return exerciseList;
-    const q = search.toLowerCase();
-    return exerciseList.filter((e) => e.name.toLowerCase().includes(q));
-  }, [exerciseList, search]);
+    let list = exerciseList;
+    if (muscleFilter) list = list.filter((e) => e.muscle_group === muscleFilter);
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter((e) => e.name.toLowerCase().includes(q));
+    }
+    return list;
+  }, [exerciseList, search, muscleFilter]);
 
   const activeDayName = days.find((d) => d.id === activeDayId)?.name ?? "Día";
 
@@ -123,10 +139,9 @@ export function CreateMyRoutineFlow({ exercises }: Props): React.ReactNode {
     });
     setAddingExercise(false);
     if (!result.success) {
-      toast.error(typeof result.error === "string" ? result.error : "Error");
+      toast.error(typeof result.error === "string" ? result.error : "Error al agregar el ejercicio");
       return;
     }
-    // Actualizar contador del día
     setDays((prev) => prev.map((d) =>
       d.id === activeDayId ? { ...d, exerciseCount: d.exerciseCount + 1 } : d
     ));
@@ -142,10 +157,11 @@ export function CreateMyRoutineFlow({ exercises }: Props): React.ReactNode {
     const result = await createMyPrivateExercise({
       name: privateExName.trim(),
       muscle_group: privateExMuscle || undefined,
+      video_url: privateExVideoUrl.trim() || undefined,
     });
     setCreatingPrivate(false);
     if (!result.success) {
-      toast.error(typeof result.error === "string" ? result.error : "Error");
+      toast.error(typeof result.error === "string" ? result.error : "Error al crear el ejercicio");
       return;
     }
     const newEx = result.data!;
@@ -153,8 +169,18 @@ export function CreateMyRoutineFlow({ exercises }: Props): React.ReactNode {
     setSelectedEx(newEx);
     setPrivateExName("");
     setPrivateExMuscle("");
+    setPrivateExVideoUrl("");
     setShowPrivateForm(false);
     toast.success("Ejercicio creado");
+  }
+
+  /* ── Volver al paso 2 desde el paso 3 ── */
+  function handleBackToDays(): void {
+    setStep("days");
+    setActiveDayId(null);
+    setSelectedEx(null);
+    setSearch("");
+    setMuscleFilter("");
   }
 
   /* ── Estilos compartidos ── */
@@ -388,21 +414,34 @@ export function CreateMyRoutineFlow({ exercises }: Props): React.ReactNode {
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
         <button
-          onClick={() => { setStep("days"); setActiveDayId(null); setSelectedEx(null); setSearch(""); }}
+          onClick={handleBackToDays}
           style={{ background: "none", border: "none", color: "#555", cursor: "pointer", display: "flex", alignItems: "center" }}
         >
           <ChevronLeft style={{ width: 20, height: 20 }} />
         </button>
-        <div>
+        <div style={{ flex: 1 }}>
           <h1 style={{ fontFamily: "var(--font-barlow, 'Barlow Condensed', sans-serif)", fontSize: 22, fontWeight: 700, color: "#fff", letterSpacing: "-0.02em" }}>
             {activeDayName}
           </h1>
           <p style={{ fontSize: 11, color: "#555" }}>Paso 3 — Agregar ejercicios</p>
         </div>
+        {/* Botón Listo en el header */}
+        <button
+          onClick={handleBackToDays}
+          style={{
+            padding: "7px 14px", background: "#FF5E14", color: "#fff",
+            border: "none", borderRadius: 10, fontSize: 12, fontWeight: 700,
+            cursor: "pointer", display: "flex", alignItems: "center", gap: 5,
+            fontFamily: "inherit", flexShrink: 0,
+          }}
+        >
+          <Check style={{ width: 12, height: 12 }} />
+          Listo
+        </button>
       </div>
 
       {/* Buscador */}
-      <div style={{ position: "relative", marginBottom: 14 }}>
+      <div style={{ position: "relative", marginBottom: 10 }}>
         <Search style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", width: 14, height: 14, color: "#444" }} />
         <input
           type="text"
@@ -411,6 +450,39 @@ export function CreateMyRoutineFlow({ exercises }: Props): React.ReactNode {
           onChange={(e) => setSearch(e.target.value)}
           style={{ ...inputStyle, paddingLeft: 36 }}
         />
+      </div>
+
+      {/* Filtros por grupo muscular */}
+      <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 2, marginBottom: 12, scrollbarWidth: "none" }}>
+        <button
+          onClick={() => setMuscleFilter("")}
+          style={{
+            flexShrink: 0, padding: "4px 10px",
+            background: !muscleFilter ? "#FF5E14" : "#111",
+            color: !muscleFilter ? "#fff" : "#666",
+            border: `0.5px solid ${!muscleFilter ? "#FF5E14" : "#252525"}`,
+            borderRadius: 100, fontSize: 10, fontWeight: 600, cursor: "pointer",
+            fontFamily: "inherit", whiteSpace: "nowrap",
+          }}
+        >
+          Todos
+        </button>
+        {availableMuscles.map((mg) => (
+          <button
+            key={mg}
+            onClick={() => setMuscleFilter(muscleFilter === mg ? "" : mg)}
+            style={{
+              flexShrink: 0, padding: "4px 10px",
+              background: muscleFilter === mg ? "#FF5E14" : "#111",
+              color: muscleFilter === mg ? "#fff" : "#666",
+              border: `0.5px solid ${muscleFilter === mg ? "#FF5E14" : "#252525"}`,
+              borderRadius: 100, fontSize: 10, fontWeight: 600, cursor: "pointer",
+              fontFamily: "inherit", whiteSpace: "nowrap",
+            }}
+          >
+            {MUSCLE_LABELS[mg] ?? mg}
+          </button>
+        ))}
       </div>
 
       {/* Form de parámetros — aparece cuando se selecciona un ejercicio */}
@@ -510,9 +582,9 @@ export function CreateMyRoutineFlow({ exercises }: Props): React.ReactNode {
 
       {/* Formulario crear ejercicio propio */}
       {showPrivateForm ? (
-        <div style={{ background: "#111", border: "0.5px solid #252525", borderRadius: 12, padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={{ background: "#111", border: "0.5px solid rgba(255,94,20,0.2)", borderRadius: 12, padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <p style={{ fontSize: 12, fontWeight: 600, color: "#888" }}>Crear ejercicio propio</p>
+            <p style={{ fontSize: 12, fontWeight: 700, color: "#FF5E14" }}>Crear ejercicio propio</p>
             <button onClick={() => setShowPrivateForm(false)} style={{ background: "none", border: "none", color: "#555", cursor: "pointer" }}>
               <X style={{ width: 14, height: 14 }} />
             </button>
@@ -535,13 +607,24 @@ export function CreateMyRoutineFlow({ exercises }: Props): React.ReactNode {
               <option key={val} value={val}>{label}</option>
             ))}
           </select>
+          {/* Campo URL de video */}
+          <div style={{ position: "relative" }}>
+            <Video style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", width: 13, height: 13, color: "#444" }} />
+            <input
+              type="url"
+              placeholder="URL de video (YouTube, etc.) — opcional"
+              value={privateExVideoUrl}
+              onChange={(e) => setPrivateExVideoUrl(e.target.value)}
+              style={{ ...inputStyle, paddingLeft: 34 }}
+            />
+          </div>
           <button
             onClick={handleCreatePrivate}
             disabled={creatingPrivate || !privateExName.trim()}
             style={{
-              padding: "9px", background: "#1a1a1a", color: "#888",
-              border: "0.5px solid #252525", borderRadius: 10,
-              fontSize: 12, fontWeight: 600, cursor: "pointer",
+              padding: "9px", background: "#FF5E14", color: "#fff",
+              border: "none", borderRadius: 10,
+              fontSize: 12, fontWeight: 700, cursor: "pointer",
               display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
               fontFamily: "inherit", opacity: creatingPrivate || !privateExName.trim() ? 0.5 : 1,
             }}
@@ -551,12 +634,14 @@ export function CreateMyRoutineFlow({ exercises }: Props): React.ReactNode {
           </button>
         </div>
       ) : (
+        /* Botón para mostrar el form — borde naranja para ser más visible */
         <button
           onClick={() => setShowPrivateForm(true)}
           style={{
-            width: "100%", padding: "9px 0", background: "transparent", color: "#555",
-            border: "0.5px dashed #252525", borderRadius: 10,
-            fontSize: 11, fontWeight: 500, cursor: "pointer",
+            width: "100%", padding: "9px 0",
+            background: "rgba(255,94,20,0.06)", color: "#FF5E14",
+            border: "0.5px solid rgba(255,94,20,0.3)", borderRadius: 10,
+            fontSize: 11, fontWeight: 600, cursor: "pointer",
             display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
             fontFamily: "inherit",
           }}

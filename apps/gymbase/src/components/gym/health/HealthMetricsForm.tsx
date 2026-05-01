@@ -6,9 +6,6 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
-import { Button } from "@core/components/ui/button";
-import { Input } from "@core/components/ui/input";
-import { Label } from "@core/components/ui/label";
 import { updateHealthProfile } from "@/actions/health.actions";
 import { healthProfileSchema, type HealthProfileInput } from "@/lib/validations/health";
 import type { HealthProfile } from "@/types/gym-health";
@@ -17,6 +14,24 @@ interface HealthMetricsFormProps {
   userId: string;
   profile: HealthProfile | null;
 }
+
+const inputCls = "w-full h-9 bg-[#0d0d0d] border border-[#222] rounded-lg px-3 text-sm text-[#ddd] placeholder-[#3a3a3a] focus:border-[#FF5E14] focus:outline-none transition-colors";
+const labelCls = "block text-[10px] font-semibold text-[#555] uppercase tracking-[0.07em] mb-1.5";
+const textareaCls = "w-full bg-[#0d0d0d] border border-[#222] rounded-lg px-3 py-2 text-sm text-[#ddd] placeholder-[#3a3a3a] focus:border-[#FF5E14] focus:outline-none transition-colors resize-none";
+const selectCls = "w-full h-9 bg-[#0d0d0d] border border-[#222] rounded-lg px-3 text-sm text-[#ddd] focus:border-[#FF5E14] focus:outline-none transition-colors appearance-none";
+
+const AdminBadge = () => (
+  <span
+    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium"
+    style={{ backgroundColor: "#FF5E1415", color: "#FF5E14", border: "1px solid #FF5E1430" }}
+  >
+    <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+      <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+    </svg>
+    Solo admin
+  </span>
+);
 
 export function HealthMetricsForm({ userId, profile }: HealthMetricsFormProps): React.ReactNode {
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
@@ -51,53 +66,61 @@ export function HealthMetricsForm({ userId, profile }: HealthMetricsFormProps): 
   }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-3">
       {feedback && (
-        <div className={`px-3 py-2 rounded-md text-sm ${feedback.type === "success" ? "bg-green-50 text-green-700 border border-green-200" : "bg-red-50 text-red-700 border border-red-200"}`}>
+        <div className={`px-3 py-2 rounded-lg text-[11px] font-medium ${
+          feedback.type === "success"
+            ? "bg-[rgba(34,197,94,0.08)] border border-[rgba(34,197,94,0.2)] text-[#22C55E]"
+            : "bg-[rgba(239,68,68,0.08)] border border-[rgba(239,68,68,0.2)] text-[#EF4444]"
+        }`}>
           {feedback.message}
         </div>
       )}
 
       <input type="hidden" {...register("user_id")} />
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-1">
-          <Label htmlFor="height_cm">Altura (cm)</Label>
-          <Input id="height_cm" type="number" step="0.1" {...register("height_cm", { valueAsNumber: true })} />
-          {errors.height_cm && <p className="text-xs text-red-600">{errors.height_cm.message}</p>}
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className={labelCls}>Altura (cm)</label>
+          <input type="number" step="0.1" className={inputCls} {...register("height_cm", { valueAsNumber: true })} />
+          {errors.height_cm && <p className="text-[10px] text-[#EF4444] mt-1">{errors.height_cm.message}</p>}
         </div>
-        <div className="space-y-1">
-          <Label htmlFor="weight_kg">Peso (kg)</Label>
-          <Input id="weight_kg" type="number" step="0.1" {...register("weight_kg", { valueAsNumber: true })} />
-          {errors.weight_kg && <p className="text-xs text-red-600">{errors.weight_kg.message}</p>}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-1">
-          <Label htmlFor="body_fat_pct">Grasa corporal (%)</Label>
-          <Input id="body_fat_pct" type="number" step="0.1" {...register("body_fat_pct", { valueAsNumber: true })} />
-        </div>
-        <div className="space-y-1">
-          <Label htmlFor="muscle_mass_kg">Masa muscular (kg)</Label>
-          <Input id="muscle_mass_kg" type="number" step="0.1" {...register("muscle_mass_kg", { valueAsNumber: true })} />
+        <div>
+          <label className={labelCls}>Peso (kg)</label>
+          <input type="number" step="0.1" className={inputCls} {...register("weight_kg", { valueAsNumber: true })} />
+          {errors.weight_kg && <p className="text-[10px] text-[#EF4444] mt-1">{errors.weight_kg.message}</p>}
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-1">
-          <Label htmlFor="resting_heart_rate">FC reposo (bpm)</Label>
-          <Input id="resting_heart_rate" type="number" {...register("resting_heart_rate", { valueAsNumber: true })} />
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className={labelCls}>Grasa corporal (%)</label>
+          <input type="number" step="0.1" className={inputCls} {...register("body_fat_pct", { valueAsNumber: true })} />
         </div>
-        <div className="space-y-1">
-          <Label htmlFor="blood_pressure">Presión arterial</Label>
-          <Input id="blood_pressure" placeholder="120/80" {...register("blood_pressure")} />
+        <div>
+          <label className={labelCls}>Masa muscular (kg)</label>
+          <input type="number" step="0.1" className={inputCls} {...register("muscle_mass_kg", { valueAsNumber: true })} />
         </div>
       </div>
 
-      <div className="space-y-1">
-        <Label htmlFor="fitness_level">Nivel de condición física</Label>
-        <select id="fitness_level" {...register("fitness_level")} className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm">
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className={labelCls}>FC reposo (bpm)</label>
+          <input type="number" className={inputCls} {...register("resting_heart_rate", { valueAsNumber: true })} />
+        </div>
+        <div>
+          <label className={labelCls}>Presión arterial</label>
+          <input type="text" placeholder="120/80" className={inputCls} {...register("blood_pressure")} />
+        </div>
+      </div>
+
+      <div>
+        <label className={labelCls}>Nivel de condición física</label>
+        <select
+          {...register("fitness_level")}
+          className={selectCls}
+          style={{ colorScheme: "dark" }}
+        >
           <option value="">Seleccionar...</option>
           <option value="beginner">Principiante</option>
           <option value="intermediate">Intermedio</option>
@@ -106,67 +129,39 @@ export function HealthMetricsForm({ userId, profile }: HealthMetricsFormProps): 
         </select>
       </div>
 
-      <div className="space-y-1">
-        <div className="flex items-center gap-1.5 mb-1">
-          <label htmlFor="injuries_notes" className="text-sm font-medium leading-none">
-            Lesiones / Notas
-          </label>
-          <span
-            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium"
-            style={{ backgroundColor: "#FF5E1415", color: "#FF5E14", border: "1px solid #FF5E1430" }}
-          >
-            <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-              <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-            </svg>
-            Solo admin
-          </span>
+      <div>
+        <div className="flex items-center gap-1.5 mb-1.5">
+          <label className={labelCls} style={{ margin: 0 }}>Lesiones / Notas</label>
+          <AdminBadge />
         </div>
-        <textarea id="injuries_notes" {...register("injuries_notes")} rows={2} className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm" />
+        <textarea rows={2} className={textareaCls} {...register("injuries_notes")} />
       </div>
 
-      <div className="space-y-1">
-        <div className="flex items-center gap-1.5 mb-1">
-          <label htmlFor="trainer_notes" className="text-sm font-medium leading-none">
-            Notas del entrenador
-          </label>
-          <span
-            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium"
-            style={{ backgroundColor: "#FF5E1415", color: "#FF5E14", border: "1px solid #FF5E1430" }}
-          >
-            <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-              <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-            </svg>
-            Solo admin
-          </span>
+      <div>
+        <div className="flex items-center gap-1.5 mb-1.5">
+          <label className={labelCls} style={{ margin: 0 }}>Notas del entrenador</label>
+          <AdminBadge />
         </div>
-        <textarea id="trainer_notes" {...register("trainer_notes")} rows={2} className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm" />
+        <textarea rows={2} className={textareaCls} {...register("trainer_notes")} />
       </div>
 
-      <div className="space-y-1">
-        <div className="flex items-center gap-1.5 mb-1">
-          <label htmlFor="medical_conditions" className="text-sm font-medium leading-none">
-            Condiciones médicas
-          </label>
-          <span
-            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium"
-            style={{ backgroundColor: "#FF5E1415", color: "#FF5E14", border: "1px solid #FF5E1430" }}
-          >
-            <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-              <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-            </svg>
-            Solo admin
-          </span>
+      <div>
+        <div className="flex items-center gap-1.5 mb-1.5">
+          <label className={labelCls} style={{ margin: 0 }}>Condiciones médicas</label>
+          <AdminBadge />
         </div>
-        <textarea id="medical_conditions" {...register("medical_conditions")} rows={2} className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm" />
+        <textarea rows={2} className={textareaCls} {...register("medical_conditions")} />
       </div>
 
-      <Button type="submit" disabled={isSubmitting} className="w-full gap-2">
-        {isSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
+      <button
+        type="submit"
+        disabled={isSubmitting}
+        className="w-full h-9 rounded-lg text-[12px] font-semibold flex items-center justify-center gap-1.5 transition-opacity disabled:opacity-50"
+        style={{ backgroundColor: "#FF5E14", color: "white" }}
+      >
+        {isSubmitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
         {profile ? "Actualizar perfil" : "Crear perfil"}
-      </Button>
+      </button>
     </form>
   );
 }

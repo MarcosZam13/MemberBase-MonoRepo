@@ -1,19 +1,23 @@
-// page.tsx — Dashboard de progreso personal: métricas, gráficas expandibles, timeline y fotos
+// page.tsx — Dashboard de progreso personal: métricas, gráficas, PRs, fotos y comparativa
 
 import { getMySnapshots, getMyProgressPhotos } from "@/actions/progress.actions";
 import { getProgressChartData } from "@/actions/progress.actions";
+import { getMyTopPRs } from "@/actions/workout.actions";
 import { HealthChartCard } from "@/components/gym/health/HealthChartCard";
 import { MemberProgressPhotoUpload } from "@/components/gym/health/MemberProgressPhotoUpload";
-import { TrendingUp, TrendingDown, Camera, Minus } from "lucide-react";
+import { BeforeAfterComparison } from "@/components/gym/progress/BeforeAfterComparison";
+import { TrendingUp, TrendingDown, Camera, Minus, Dumbbell } from "lucide-react";
+import Link from "next/link";
 import { themeConfig } from "@/lib/theme";
 
 export default async function PortalProgressPage(): Promise<React.ReactNode> {
   if (!themeConfig.features.gym_health_metrics && !themeConfig.features.gym_progress) return null;
 
-  const [snapshots, chartData, photos] = await Promise.all([
+  const [snapshots, chartData, photos, topPRs] = await Promise.all([
     themeConfig.features.gym_health_metrics ? getMySnapshots(50) : Promise.resolve([]),
     themeConfig.features.gym_health_metrics ? getProgressChartData(50) : Promise.resolve([]),
     themeConfig.features.gym_progress ? getMyProgressPhotos() : Promise.resolve([]),
+    themeConfig.features.gym_routines ? getMyTopPRs(6) : Promise.resolve([]),
   ]);
 
   // snapshots viene desc (más reciente primero)
@@ -241,7 +245,76 @@ export default async function PortalProgressPage(): Promise<React.ReactNode> {
         </div>
       )}
 
-      {/* ── SECCIÓN 4: GALERÍA DE FOTOS ─────────────────────────────────────────── */}
+      {/* ── SECCIÓN 4: MIS MEJORES MARCAS (PRs por peso máximo) ──────────────────── */}
+      {themeConfig.features.gym_routines && topPRs.length > 0 && (
+        <div
+          className="rounded-2xl overflow-hidden"
+          style={{ backgroundColor: "var(--gym-bg-card)", border: "1px solid var(--gym-border)" }}
+        >
+          <div
+            className="flex items-center justify-between px-5 py-4 border-b"
+            style={{ borderColor: "var(--gym-border)" }}
+          >
+            <div className="flex items-center gap-2">
+              <Dumbbell className="w-3.5 h-3.5" style={{ color: "#FF5E14" }} />
+              <p className="text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color: "var(--gym-text-ghost)" }}>
+                Mis mejores marcas
+              </p>
+            </div>
+            <Link
+              href="/portal/routines/strength"
+              className="text-[10px] transition-colors"
+              style={{ color: "var(--gym-text-ghost)" }}
+            >
+              Ver todos mis PRs →
+            </Link>
+          </div>
+
+          <div className="p-4 grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {topPRs.map((pr) => {
+              const exercise = pr.exercise as { name: string; muscle_group: string | null } | undefined;
+              const MUSCLE_LABELS: Record<string, string> = {
+                chest: "Pecho", back: "Espalda", shoulders: "Hombros",
+                biceps: "Bíceps", triceps: "Tríceps", forearms: "Antebrazos",
+                quads: "Cuádriceps", hamstrings: "Femorales", glutes: "Glúteos",
+                calves: "Gemelos", core: "Core", full_body: "Cuerpo completo",
+              };
+              return (
+                <div
+                  key={pr.id}
+                  className="rounded-xl p-3"
+                  style={{ backgroundColor: "var(--gym-bg-elevated, #161616)", border: "1px solid var(--gym-border)" }}
+                >
+                  <div className="flex items-start justify-between gap-1 mb-1.5">
+                    <p className="text-[11px] font-semibold leading-tight line-clamp-2" style={{ color: "var(--gym-text-primary)" }}>
+                      {exercise?.name ?? "Ejercicio"}
+                    </p>
+                    <span
+                      className="text-[8px] font-bold px-1.5 py-0.5 rounded-full shrink-0"
+                      style={{ backgroundColor: "#FF5E1415", color: "#FF5E14", border: "1px solid #FF5E1425" }}
+                    >
+                      PR
+                    </span>
+                  </div>
+                  {exercise?.muscle_group && (
+                    <p className="text-[9px] mb-1.5" style={{ color: "var(--gym-text-ghost)" }}>
+                      {MUSCLE_LABELS[exercise.muscle_group] ?? exercise.muscle_group}
+                    </p>
+                  )}
+                  <p className="text-[20px] font-extrabold leading-none" style={{ color: "#FF5E14", fontFamily: "var(--font-barlow)" }}>
+                    {pr.max_weight} <span className="text-[12px] font-normal" style={{ color: "var(--gym-text-ghost)" }}>kg</span>
+                  </p>
+                  <p className="text-[9px] mt-1" style={{ color: "var(--gym-text-ghost)" }}>
+                    {new Date(pr.achieved_at).toLocaleDateString("es-CR", { day: "numeric", month: "short", year: "numeric" })}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── SECCIÓN 5: GALERÍA DE FOTOS ─────────────────────────────────────────── */}
       {themeConfig.features.gym_progress && (
         <div
           className="rounded-2xl overflow-hidden"
@@ -330,6 +403,11 @@ export default async function PortalProgressPage(): Promise<React.ReactNode> {
             </div>
           )}
         </div>
+      )}
+
+      {/* ── SECCIÓN 6: COMPARATIVA ANTES/DESPUÉS ─────────────────────────────────── */}
+      {themeConfig.features.gym_progress && Object.keys(photosByDate).length >= 2 && (
+        <BeforeAfterComparison photosByDate={photosByDate} />
       )}
 
     </div>

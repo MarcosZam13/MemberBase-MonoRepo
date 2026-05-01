@@ -139,6 +139,8 @@
   --input:              #1A1A1A;
   --ring:               #FF5E14;
   --radius:             0.875rem;  /* 14px — radius-md por defecto */
+  --card-radius:        14px;      /* fallback — DynamicThemeProvider lo sobreescribe desde DB */
+  --card-shadow:        none;      /* fallback — DynamicThemeProvider lo sobreescribe según preset */
 
   /* ── Charts — paleta gym ── */
   --chart-1: #FF5E14;

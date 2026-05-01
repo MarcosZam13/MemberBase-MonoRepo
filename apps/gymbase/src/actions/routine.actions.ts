@@ -52,7 +52,7 @@ export async function getRoutineById(routineId: string): Promise<RoutineWithDays
 
 export async function createRoutine(input: unknown): Promise<ActionResult<Routine>> {
   const user = await getCurrentUser();
-  if (!user || user.role !== "admin") return { success: false, error: "Sin permisos" };
+  if (!user || user.role !== "admin" && user.role !== "owner") return { success: false, error: "Sin permisos" };
   const parsed = createRoutineSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.flatten().fieldErrors };
   const supabase = await createClient();
@@ -69,7 +69,7 @@ export async function createRoutine(input: unknown): Promise<ActionResult<Routin
 
 export async function editRoutine(routineId: string, input: unknown): Promise<ActionResult<Routine>> {
   const user = await getCurrentUser();
-  if (!user || user.role !== "admin") return { success: false, error: "Sin permisos" };
+  if (!user || user.role !== "admin" && user.role !== "owner") return { success: false, error: "Sin permisos" };
   const parsed = createRoutineSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.flatten().fieldErrors };
   const supabase = await createClient();
@@ -86,7 +86,7 @@ export async function editRoutine(routineId: string, input: unknown): Promise<Ac
 
 export async function removeRoutine(routineId: string): Promise<ActionResult> {
   const user = await getCurrentUser();
-  if (!user || user.role !== "admin") return { success: false, error: "Sin permisos" };
+  if (!user || user.role !== "admin" && user.role !== "owner") return { success: false, error: "Sin permisos" };
   const supabase = await createClient();
   try {
     await deleteRoutine(supabase, routineId);
@@ -100,7 +100,7 @@ export async function removeRoutine(routineId: string): Promise<ActionResult> {
 
 export async function addDay(routineId: string, dayNumber: number, name?: string): Promise<ActionResult<RoutineDay>> {
   const user = await getCurrentUser();
-  if (!user || user.role !== "admin") return { success: false, error: "Sin permisos" };
+  if (!user || user.role !== "admin" && user.role !== "owner") return { success: false, error: "Sin permisos" };
   const supabase = await createClient();
   try {
     const day = await addDayToRoutine(supabase, routineId, dayNumber, name);
@@ -114,7 +114,7 @@ export async function addDay(routineId: string, dayNumber: number, name?: string
 
 export async function addExercise(dayId: string, input: unknown): Promise<ActionResult<RoutineExercise>> {
   const user = await getCurrentUser();
-  if (!user || user.role !== "admin") return { success: false, error: "Sin permisos" };
+  if (!user || user.role !== "admin" && user.role !== "owner") return { success: false, error: "Sin permisos" };
   const parsed = addRoutineExerciseSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.flatten().fieldErrors };
   const supabase = await createClient();
@@ -135,7 +135,7 @@ export async function updateExerciseParams(
   data: { sets?: number | null; reps?: string | null; rest_seconds?: number | null },
 ): Promise<ActionResult> {
   const user = await getCurrentUser();
-  if (!user || user.role !== "admin") return { success: false, error: "Sin permisos" };
+  if (!user || user.role !== "admin" && user.role !== "owner") return { success: false, error: "Sin permisos" };
   const supabase = await createClient();
   try {
     await updateExerciseInDay(supabase, routineExerciseId, data);
@@ -152,7 +152,7 @@ export async function updateExerciseDefaultSetsAction(
   input: unknown
 ): Promise<ActionResult> {
   const user = await getCurrentUser();
-  if (!user || user.role !== "admin") return { success: false, error: "Sin permisos" };
+  if (!user || user.role !== "admin" && user.role !== "owner") return { success: false, error: "Sin permisos" };
   const parsed = updateExerciseDefaultSetsSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.flatten().fieldErrors };
   const supabase = await createClient();
@@ -168,7 +168,7 @@ export async function updateExerciseDefaultSetsAction(
 
 export async function removeExerciseAction(routineExerciseId: string): Promise<ActionResult> {
   const user = await getCurrentUser();
-  if (!user || user.role !== "admin") return { success: false, error: "Sin permisos" };
+  if (!user || user.role !== "admin" && user.role !== "owner") return { success: false, error: "Sin permisos" };
   const supabase = await createClient();
   try {
     await removeExerciseFromDay(supabase, routineExerciseId);
@@ -187,7 +187,7 @@ export async function assignRoutineByPlans(
   planIds: string[]
 ): Promise<ActionResult<{ assigned: number }>> {
   const user = await getCurrentUser();
-  if (!user || !["admin", "trainer"].includes(user.role)) return { success: false, error: "Sin permisos" };
+  if (!user || !["admin", "owner", "trainer"].includes(user.role)) return { success: false, error: "Sin permisos" };
 
   const supabase = await createClient();
   try {
@@ -256,7 +256,7 @@ export async function assignRoutineByPlans(
 // Obtiene la rutina destacada de un miembro específico (para uso admin y dashboard)
 export async function getMemberActiveRoutine(memberId: string): Promise<MemberRoutine | null> {
   const user = await getCurrentUser();
-  if (!user || user.role !== "admin") return null;
+  if (!user || user.role !== "admin" && user.role !== "owner") return null;
   const supabase = await createClient();
   try {
     return await fetchFeaturedRoutine(supabase, memberId);
@@ -274,9 +274,9 @@ export async function getMemberRoutineStack(
   const user = await getCurrentUser();
   if (!user) return { active: [], history: [] };
 
-  // El miembro solo puede ver sus propias rutinas; el admin puede ver las de cualquiera
-  const targetId = user.role === "admin" && userId ? userId : user.id;
-  if (user.role !== "admin" && userId && userId !== user.id) return { active: [], history: [] };
+  // El miembro solo puede ver sus propias rutinas; admin y owner pueden ver las de cualquiera
+  const targetId = (user.role === "admin" || user.role === "owner") && userId ? userId : user.id;
+  if (user.role !== "admin" && user.role !== "owner" && userId && userId !== user.id) return { active: [], history: [] };
 
   const supabase = await createClient();
   try {
@@ -303,10 +303,10 @@ export async function getMyRoutine(): Promise<MemberRoutine | null> {
   }
 }
 
-// Agrega una rutina al stack del miembro con etiqueta opcional — admin only
+// Agrega una rutina al stack del miembro con etiqueta opcional — admin/owner/trainer
 export async function assignRoutineToMemberAction(input: unknown): Promise<ActionResult<MemberRoutine>> {
   const user = await getCurrentUser();
-  if (!user || !["admin", "trainer"].includes(user.role)) return { success: false, error: "Sin permisos" };
+  if (!user || !["admin", "owner", "trainer"].includes(user.role)) return { success: false, error: "Sin permisos" };
   const parsed = assignRoutineToMemberSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.flatten().fieldErrors };
   const supabase = await createClient();
@@ -320,15 +320,14 @@ export async function assignRoutineToMemberAction(input: unknown): Promise<Actio
     return { success: true, data: assignment };
   } catch (error) {
     console.error("[assignRoutineToMemberAction] Error:", error);
-    const msg = error instanceof Error ? error.message : "Error al asignar la rutina";
-    return { success: false, error: msg };
+    return { success: false, error: "Error al asignar la rutina. Intenta de nuevo." };
   }
 }
 
-// Quita una rutina del stack del miembro (soft delete) — admin only
+// Quita una rutina del stack del miembro (soft delete) — admin/owner/trainer
 export async function removeRoutineFromMemberAction(input: unknown): Promise<ActionResult> {
   const user = await getCurrentUser();
-  if (!user || !["admin", "trainer"].includes(user.role)) return { success: false, error: "Sin permisos" };
+  if (!user || !["admin", "owner", "trainer"].includes(user.role)) return { success: false, error: "Sin permisos" };
   const parsed = removeRoutineFromMemberSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.flatten().fieldErrors };
   const supabase = await createClient();
@@ -369,13 +368,13 @@ export async function setFeaturedRoutineAction(input: unknown): Promise<ActionRe
     if (!mr) return { success: false, error: "Asignación no encontrada" };
 
     // El admin puede cambiar la featured de cualquier miembro; el miembro solo la propia
-    if (user.role !== "admin" && mr.user_id !== user.id) {
+    if (user.role !== "admin" && user.role !== "owner" && mr.user_id !== user.id) {
       return { success: false, error: "Sin permisos" };
     }
 
     await setFeaturedRoutine(supabase, mr.user_id, parsed.data.member_routine_id);
 
-    if (user.role === "admin") revalidatePath(`/admin/members/${mr.user_id}`);
+    if (user.role === "admin" || user.role === "owner") revalidatePath(`/admin/members/${mr.user_id}`);
     revalidatePath("/portal/routines");
     return { success: true };
   } catch (error) {
@@ -559,8 +558,7 @@ export async function addExerciseToMyDay(input: unknown): Promise<ActionResult<R
     return { success: true, data: exercise };
   } catch (error) {
     console.error("[addExerciseToMyDay] Error:", error);
-    const msg = error instanceof Error ? error.message : "Error al agregar el ejercicio";
-    return { success: false, error: msg };
+    return { success: false, error: "Error al agregar el ejercicio. Intenta de nuevo." };
   }
 }
 
@@ -599,10 +597,53 @@ export async function getMyOwnRoutines(): Promise<RoutineWithDays[]> {
   }
 }
 
+// Elimina un ejercicio de un día de una rutina propia del miembro
+// La RLS de gym_routine_exercises verifica que la rutina padre pertenezca al miembro
+export async function removeExerciseFromMyDay(routineExerciseId: string): Promise<ActionResult> {
+  const user = await getCurrentUser();
+  if (!user) return { success: false, error: "No autenticado" };
+
+  const supabase = await createClient();
+  try {
+    const { error } = await supabase
+      .from("gym_routine_exercises")
+      .delete()
+      .eq("id", routineExerciseId);
+
+    if (error) throw new Error(error.message);
+    revalidatePath("/portal/routines");
+    return { success: true };
+  } catch (error) {
+    console.error("[removeExerciseFromMyDay] Error:", error);
+    return { success: false, error: "Error al eliminar el ejercicio" };
+  }
+}
+
+// Elimina un día completo de una rutina propia del miembro (cascade borra sus ejercicios)
+export async function removeDayFromMyRoutine(dayId: string): Promise<ActionResult> {
+  const user = await getCurrentUser();
+  if (!user) return { success: false, error: "No autenticado" };
+
+  const supabase = await createClient();
+  try {
+    const { error } = await supabase
+      .from("gym_routine_days")
+      .delete()
+      .eq("id", dayId);
+
+    if (error) throw new Error(error.message);
+    revalidatePath("/portal/routines");
+    return { success: true };
+  } catch (error) {
+    console.error("[removeDayFromMyRoutine] Error:", error);
+    return { success: false, error: "Error al eliminar el día" };
+  }
+}
+
 // Compatibilidad con componentes que usaban assignRoutine — delega a assignRoutineToMemberAction
 export async function assignRoutine(input: unknown): Promise<ActionResult<MemberRoutine>> {
   const user = await getCurrentUser();
-  if (!user || !["admin", "trainer"].includes(user.role)) return { success: false, error: "Sin permisos" };
+  if (!user || !["admin", "owner", "trainer"].includes(user.role)) return { success: false, error: "Sin permisos" };
   const parsed = assignRoutineSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.flatten().fieldErrors };
   const supabase = await createClient();
@@ -614,7 +655,6 @@ export async function assignRoutine(input: unknown): Promise<ActionResult<Member
     return { success: true, data: assignment };
   } catch (error) {
     console.error("[assignRoutine] Error:", error);
-    const msg = error instanceof Error ? error.message : "Error al asignar la rutina";
-    return { success: false, error: msg };
+    return { success: false, error: "Error al asignar la rutina. Intenta de nuevo." };
   }
 }

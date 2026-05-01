@@ -12,6 +12,8 @@ import {
   CalendarDays,
   ShieldCheck,
   LogOut,
+  Settings,
+  Paintbrush,
 } from "lucide-react";
 import { themeConfig } from "@/lib/theme";
 import { signOut } from "@/actions/auth.actions";
@@ -29,6 +31,8 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/owner/members", label: "Membresías", icon: <Users size={18} /> },
   { href: "/owner/inventory", label: "Inventario", icon: <Package size={18} /> },
   { href: "/owner/attendance", label: "Asistencia", icon: <CalendarDays size={18} /> },
+  { href: "/owner/settings/appearance", label: "Apariencia", icon: <Paintbrush size={18} /> },
+  { href: "/admin/settings", label: "Configuración", icon: <Settings size={18} /> },
 ];
 
 export function OwnerSidebar(): React.ReactElement {

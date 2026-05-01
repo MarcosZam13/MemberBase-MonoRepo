@@ -12,6 +12,7 @@ import {
   Zap,
   Activity,
   BookOpen,
+  ShoppingBag,
 } from "lucide-react";
 import { getCurrentUser } from "@/lib/supabase/server";
 import { getUserSubscription } from "@core/actions/payment.actions";
@@ -542,6 +543,17 @@ export default async function PortalDashboardPage(): Promise<React.ReactNode> {
               <BookOpen className="w-3.5 h-3.5" style={{ color: "#A855F7" }} />
               Explorar contenido
             </Link>
+
+            {themeConfig.features.gym_marketplace && (
+              <Link
+                href="/portal/store"
+                className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-medium w-full"
+                style={{ backgroundColor: "var(--gym-bg-elevated)", color: "var(--gym-text-secondary)" }}
+              >
+                <ShoppingBag className="w-3.5 h-3.5" style={{ color: "#FACC15" }} />
+                Tienda
+              </Link>
+            )}
           </div>
         </div>
       </div>

@@ -72,7 +72,7 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
       .eq("id", user.id)
       .single();
 
-    if (profile?.role !== "admin") {
+    if (profile?.role !== "admin" && profile?.role !== "owner") {
       const url = request.nextUrl.clone();
       url.pathname = "/portal/dashboard";
       return NextResponse.redirect(url);

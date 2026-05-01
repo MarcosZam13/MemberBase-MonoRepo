@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import { getMembershipReport } from "@/actions/owner.actions";
 import { MembershipTable } from "@/components/owner/MembershipTable";
 import { PeriodSelector } from "@/components/owner/PeriodSelector";
+import { ExportCSVButton } from "@/components/owner/ExportCSVButton";
 import { themeConfig } from "@/lib/theme";
 import type { OwnerPeriod } from "@core/types/owner";
 
@@ -113,6 +114,15 @@ export default async function OwnerMembersPage({
   const totalNew = data.reduce((s, d) => s + d.new_this_month, 0);
   const totalCancelled = data.reduce((s, d) => s + d.cancelled_this_month, 0);
 
+  const csvRows = data.map((d) => ({
+    "Plan": d.plan_name,
+    "Activos": d.active_count,
+    "Ingresos (CRC)": d.revenue_this_month,
+    "Nuevos": d.new_this_month,
+    "Cancelaciones": d.cancelled_this_month,
+    "Retención prom. (días)": Math.round(d.avg_retention_days),
+  }));
+
   return (
     <div className="p-8 max-w-7xl mx-auto">
       {/* Header */}
@@ -123,9 +133,12 @@ export default async function OwnerMembersPage({
           </h1>
           <p className="text-[#737373] text-sm mt-1">Distribución y retención por plan</p>
         </div>
-        <Suspense>
-          <PeriodSelector current={period} />
-        </Suspense>
+        <div className="flex items-center gap-3">
+          <ExportCSVButton filename={`membresias-${period}.csv`} rows={csvRows} />
+          <Suspense>
+            <PeriodSelector current={period} />
+          </Suspense>
+        </div>
       </div>
 
       {/* KPIs rápidos */}

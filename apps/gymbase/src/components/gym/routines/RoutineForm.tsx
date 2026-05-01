@@ -6,12 +6,13 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Loader2, Dumbbell, Calendar, Clock, LayoutTemplate } from "lucide-react";
+import { Loader2, Dumbbell, Calendar, LayoutTemplate, Sparkles } from "lucide-react";
 import { Button } from "@core/components/ui/button";
 import { Input } from "@core/components/ui/input";
 import { Label } from "@core/components/ui/label";
 import { createRoutine, editRoutine } from "@/actions/routine.actions";
 import { createRoutineSchema, type CreateRoutineInput } from "@/lib/validations/routines";
+import { toOpaqueId } from "@/lib/utils/opaque-id";
 import type { Routine } from "@/types/gym-routines";
 
 const DAYS_OPTIONS = [2, 3, 4, 5, 6];
@@ -34,12 +35,14 @@ export function RoutineForm({ routine }: RoutineFormProps): React.ReactNode {
         duration_weeks: routine?.duration_weeks ?? undefined,
         days_per_week: routine?.days_per_week ?? undefined,
         is_template: routine?.is_template ?? true,
+        is_default: routine?.is_default ?? false,
       },
     });
 
   const selectedDays = watch("days_per_week");
   const selectedDuration = watch("duration_weeks");
   const isTemplate = watch("is_template");
+  const isDefault = watch("is_default");
 
   async function onSubmit(data: CreateRoutineInput): Promise<void> {
     setError(null);
@@ -48,7 +51,8 @@ export function RoutineForm({ routine }: RoutineFormProps): React.ReactNode {
       : await createRoutine(data);
 
     if (result.success) {
-      router.push(routine ? `/admin/routines/${routine.id}` : `/admin/routines/${result.data?.id}`);
+      const targetId = routine ? routine.id : result.data?.id;
+      router.push(`/admin/routines/${targetId ? toOpaqueId(targetId) : ""}`);
     } else {
       const msg = typeof result.error === "string" ? result.error : "Error al guardar";
       setError(msg);
@@ -164,9 +168,9 @@ export function RoutineForm({ routine }: RoutineFormProps): React.ReactNode {
         </div>
       </div>
 
-      {/* Plantilla */}
-      <div className="rounded-xl border border-border bg-card p-5">
-        <div className="flex items-center gap-2 mb-3">
+      {/* Plantilla y asignación automática */}
+      <div className="rounded-xl border border-border bg-card p-5 space-y-3">
+        <div className="flex items-center gap-2 mb-1">
           <LayoutTemplate className="w-4 h-4 text-primary" />
           <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest">
             Tipo
@@ -197,6 +201,35 @@ export function RoutineForm({ routine }: RoutineFormProps): React.ReactNode {
         </button>
         {/* Campo oculto para registrar is_template con RHF */}
         <input type="hidden" {...register("is_template")} />
+
+        {/* Rutina destacada: se asigna automáticamente al aprobar suscripción */}
+        <button
+          type="button"
+          onClick={() => setValue("is_default", !isDefault)}
+          className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border-2 transition-all text-left ${
+            isDefault
+              ? "border-amber-500 bg-amber-500/5"
+              : "border-border bg-muted/40 hover:border-amber-500/30"
+          }`}
+        >
+          <div className="flex items-center gap-3">
+            <Sparkles className={`w-4 h-4 shrink-0 ${isDefault ? "text-amber-400" : "text-muted-foreground"}`} />
+            <div>
+              <p className={`font-medium text-sm ${isDefault ? "text-foreground" : "text-muted-foreground"}`}>
+                Asignar automáticamente a nuevos miembros
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Se agrega al activar cualquier suscripción
+              </p>
+            </div>
+          </div>
+          <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all ${
+            isDefault ? "border-amber-500 bg-amber-500" : "border-muted-foreground"
+          }`}>
+            {isDefault && <div className="w-2 h-2 rounded-full bg-white" />}
+          </div>
+        </button>
+        <input type="hidden" {...register("is_default")} />
       </div>
 
       {/* Acciones */}

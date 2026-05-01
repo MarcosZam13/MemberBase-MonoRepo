@@ -22,6 +22,11 @@ export interface ScheduledClass {
   description: string | null;
   is_cancelled: boolean;
   created_at: string;
+  // Campos de recurrencia (agregados en migración 000017)
+  recurrence_group_id: string | null;
+  recurrence_rule: "daily" | "weekdays" | "weekly" | "custom" | null;
+  recurrence_weeks: number | null;
+  // Relaciones
   class_type?: ClassType;
   bookings_count?: number;
 }

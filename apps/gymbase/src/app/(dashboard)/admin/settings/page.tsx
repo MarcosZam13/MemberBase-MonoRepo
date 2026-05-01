@@ -7,7 +7,8 @@ import { redirect } from "next/navigation";
 
 export default async function SettingsPage(): Promise<React.ReactNode> {
   const user = await getCurrentUser();
-  if (!user || user.role !== "admin") redirect("/admin");
+  // Admins y owners acceden — admins solo ven gestión de roles, owners también configuración del gym
+  if (!user || (user.role !== "owner" && user.role !== "admin")) redirect("/admin");
 
   const [settings, admins] = await Promise.all([getOrgSettings(), getAdmins()]);
 
@@ -16,7 +17,9 @@ export default async function SettingsPage(): Promise<React.ReactNode> {
       <div>
         <h1 className="text-2xl font-bold">Configuración</h1>
         <p className="text-muted-foreground text-sm">
-          Gestiona la información del gym y los administradores del panel.
+          {user.role === "owner"
+            ? "Gestiona la información del gym y los administradores del panel."
+            : "Gestiona los administradores del panel."}
         </p>
       </div>
 
@@ -24,6 +27,7 @@ export default async function SettingsPage(): Promise<React.ReactNode> {
         settings={settings}
         admins={admins}
         currentUserId={user.id}
+        currentUserRole={user.role}
       />
     </div>
   );

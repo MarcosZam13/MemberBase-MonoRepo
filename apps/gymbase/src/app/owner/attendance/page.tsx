@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import { getAttendanceReport } from "@/actions/owner.actions";
 import { AttendanceHeatmap } from "@/components/owner/AttendanceHeatmap";
 import { PeriodSelector } from "@/components/owner/PeriodSelector";
+import { ExportCSVButton } from "@/components/owner/ExportCSVButton";
 import type { OwnerPeriod } from "@core/types/owner";
 
 interface PageProps {
@@ -31,6 +32,15 @@ export default async function OwnerAttendancePage({
     data[0] ?? null
   );
 
+  const csvRows = [...data]
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .map((d) => ({
+      "Fecha": d.date,
+      "Visitas totales": d.total_visits,
+      "Miembros únicos": d.unique_members,
+      "Hora pico": `${d.peak_hour}:00`,
+    }));
+
   return (
     <div className="p-8 max-w-7xl mx-auto">
       {/* Header */}
@@ -41,9 +51,12 @@ export default async function OwnerAttendancePage({
           </h1>
           <p className="text-[#737373] text-sm mt-1">Análisis de visitas y patrones de uso</p>
         </div>
-        <Suspense>
-          <PeriodSelector current={period} />
-        </Suspense>
+        <div className="flex items-center gap-3">
+          <ExportCSVButton filename={`asistencia-${period}.csv`} rows={csvRows} />
+          <Suspense>
+            <PeriodSelector current={period} />
+          </Suspense>
+        </div>
       </div>
 
       {/* KPIs */}

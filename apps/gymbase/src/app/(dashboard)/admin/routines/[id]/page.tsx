@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowLeft, Pencil } from "lucide-react";
 import { Button } from "@core/components/ui/button";
 import { getRoutineById } from "@/actions/routine.actions";
+import { fromOpaqueId } from "@/lib/utils/opaque-id";
 import { getExercises } from "@/actions/exercise.actions";
 import { getPlans } from "@core/actions/membership.actions";
 import { getMembers } from "@core/actions/admin.actions";
@@ -16,7 +17,8 @@ interface Props {
 }
 
 export default async function EditRoutinePage({ params }: Props): Promise<React.ReactNode> {
-  const { id } = await params;
+  const { id: rawId } = await params;
+  const id = fromOpaqueId(rawId);
   const [routine, exercises, plans, members] = await Promise.all([
     getRoutineById(id),
     getExercises(),

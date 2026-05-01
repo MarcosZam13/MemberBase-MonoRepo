@@ -1,37 +1,8 @@
-// page.tsx — Formulario para crear un nuevo post en la comunidad
+// page.tsx — Creación de posts ya no está disponible para miembros; solo admins publican
 
 import { redirect } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
-import Link from "next/link";
-import { Button } from "@core/components/ui/button";
-import { getUserSubscription } from "@core/actions/payment.actions";
-import NewPostForm from "@core/app/(portal)/portal/community/new/NewPostForm";
 
-export default async function NewPostPage(): Promise<React.ReactNode> {
-  const subscription = await getUserSubscription();
-
-  // Solo miembros activos pueden publicar
-  if (subscription?.status !== "active") {
-    redirect("/portal/community");
-  }
-
-  return (
-    <div className="max-w-2xl space-y-6">
-      <Button asChild variant="ghost" size="sm" className="gap-2 -ml-2">
-        <Link href="/portal/community">
-          <ArrowLeft className="w-4 h-4" />
-          Volver a la comunidad
-        </Link>
-      </Button>
-
-      <div>
-        <h1 className="text-2xl font-bold">Nueva publicación</h1>
-        <p className="text-muted-foreground text-sm mt-1">
-          Comparte algo con la comunidad
-        </p>
-      </div>
-
-      <NewPostForm />
-    </div>
-  );
+export default function NewPostPage(): never {
+  // Los posts de comunidad solo los crean admins desde el panel de administración
+  redirect("/portal/community");
 }

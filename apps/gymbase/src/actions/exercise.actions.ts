@@ -2,7 +2,7 @@
 
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { createClient, getCurrentUser, getOrgId } from "@/lib/supabase/server";
 import { themeConfig } from "@/lib/theme";
 import {
@@ -28,7 +28,7 @@ export async function getExercises(filters?: { muscle_group?: string; difficulty
 
 export async function createExercise(input: unknown): Promise<ActionResult<Exercise>> {
   const user = await getCurrentUser();
-  if (!user || user.role !== "admin") return { success: false, error: "Sin permisos" };
+  if (!user || user.role !== "admin" && user.role !== "owner") return { success: false, error: "Sin permisos" };
   const parsed = createExerciseSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.flatten().fieldErrors };
   const supabase = await createClient();
@@ -36,22 +36,24 @@ export async function createExercise(input: unknown): Promise<ActionResult<Exerc
     const orgId = await getOrgId();
     const exercise = await insertExercise(supabase, orgId, parsed.data);
     revalidatePath("/admin/routines");
+    revalidateTag("global-exercises", {});
     return { success: true, data: exercise };
   } catch (error) {
     console.error("[createExercise] Error:", error);
-    return { success: false, error: error instanceof Error ? error.message : "Error al crear el ejercicio" };
+    return { success: false, error: "Error al crear el ejercicio. Intenta de nuevo." };
   }
 }
 
 export async function editExercise(exerciseId: string, input: unknown): Promise<ActionResult<Exercise>> {
   const user = await getCurrentUser();
-  if (!user || user.role !== "admin") return { success: false, error: "Sin permisos" };
+  if (!user || user.role !== "admin" && user.role !== "owner") return { success: false, error: "Sin permisos" };
   const parsed = createExerciseSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.flatten().fieldErrors };
   const supabase = await createClient();
   try {
     const exercise = await updateExercise(supabase, exerciseId, parsed.data);
     revalidatePath("/admin/routines");
+    revalidateTag("global-exercises", {});
     return { success: true, data: exercise };
   } catch (error) {
     console.error("[editExercise] Error:", error);
@@ -61,11 +63,12 @@ export async function editExercise(exerciseId: string, input: unknown): Promise<
 
 export async function removeExercise(exerciseId: string): Promise<ActionResult> {
   const user = await getCurrentUser();
-  if (!user || user.role !== "admin") return { success: false, error: "Sin permisos" };
+  if (!user || user.role !== "admin" && user.role !== "owner") return { success: false, error: "Sin permisos" };
   const supabase = await createClient();
   try {
     await deleteExercise(supabase, exerciseId);
     revalidatePath("/admin/routines");
+    revalidateTag("global-exercises", {});
     return { success: true };
   } catch (error) {
     console.error("[removeExercise] Error:", error);

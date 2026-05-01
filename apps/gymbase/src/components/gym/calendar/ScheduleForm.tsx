@@ -67,7 +67,7 @@ export function ScheduleForm({ classTypes, instructors = [] }: ScheduleFormProps
   function applyDuration(minutes: number, startUTC?: string): void {
     const base = startUTC ?? startsAt;
     if (!base) return;
-    const startDate = new Date(base); // base tiene Z → unambiguous UTC
+    const startDate = new Date(base);
     if (isNaN(startDate.getTime())) return;
     const endDate = new Date(startDate.getTime() + minutes * 60 * 1000);
     setValue("ends_at", endDate.toISOString());
@@ -91,20 +91,47 @@ export function ScheduleForm({ classTypes, instructors = [] }: ScheduleFormProps
     );
   }
 
+  function handleToggleRecurring(): void {
+    const next = !isRecurring;
+    setIsRecurring(next);
+    setValue("is_recurring", next);
+  }
+
+  function handlePatternChange(value: string): void {
+    setRecurrencePattern(value);
+    setValue("recurrence_rule", value as "daily" | "weekdays" | "weekly" | "custom");
+    // Limpiar días custom al cambiar de patrón
+    if (value !== "custom") setSelectedDays([]);
+  }
+
   async function onSubmit(data: ScheduleClassInput): Promise<void> {
     setFeedback(null);
-    const result = await scheduleClass(data);
+
+    // Adjuntar los días personalizados al payload antes de enviar
+    const payload = {
+      ...data,
+      recurrence_custom_days: recurrencePattern === "custom" ? selectedDays : undefined,
+    };
+
+    const result = await scheduleClass(payload);
     if (result.success) {
-      setFeedback({ type: "success", message: "Clase programada correctamente" });
+      const isRecurringResult = data.is_recurring;
+      setFeedback({
+        type: "success",
+        message: isRecurringResult
+          ? `Serie de clases programada (${data.recurrence_weeks} semanas)`
+          : "Clase programada correctamente",
+      });
       reset();
       setDurationMinutes(60);
       setIsRecurring(false);
       setSelectedDays([]);
+      setSelectedTypeId(null);
     } else {
       const msg = typeof result.error === "string" ? result.error : "Error al programar";
       setFeedback({ type: "error", message: msg });
     }
-    setTimeout(() => setFeedback(null), 4000);
+    setTimeout(() => setFeedback(null), 5000);
   }
 
   const sectionClass = "text-[10px] font-semibold text-[#FF5E14] uppercase tracking-[0.1em] mb-3 mt-5 pb-2 border-b border-[#1a1a1a]";
@@ -125,11 +152,6 @@ export function ScheduleForm({ classTypes, instructors = [] }: ScheduleFormProps
       {/* Tipo de clase con dot de color */}
       <div className="mb-4">
         <label className={labelClass}>Tipo de clase <span className="text-[#FF5E14]">*</span></label>
-        {/*
-          Base UI desmonta los items del popup al cerrarlo, borrando su registro de texto.
-          SelectValue queda sin referencia y cae de vuelta al value raw (UUID).
-          Solución: mostrar el label manualmente desde el estado selectedTypeId.
-        */}
         <Select onValueChange={(v: string | null) => { if (v) { setValue("type_id", v); setSelectedTypeId(v); } }}>
           <SelectTrigger className={inputClass}>
             {selectedTypeId ? (() => {
@@ -157,7 +179,7 @@ export function ScheduleForm({ classTypes, instructors = [] }: ScheduleFormProps
           </SelectContent>
         </Select>
         {errors.type_id && <p className="text-xs text-destructive mt-1">{errors.type_id.message}</p>}
-        {/* Preview del tipo seleccionado — muestra color, nombre y descripción */}
+        {/* Preview del tipo seleccionado */}
         {selectedTypeId && (() => {
           const ct = classTypes.find((t) => t.id === selectedTypeId);
           if (!ct) return null;
@@ -173,7 +195,7 @@ export function ScheduleForm({ classTypes, instructors = [] }: ScheduleFormProps
         })()}
       </div>
 
-      {/* Título personalizado — opcional, cae al nombre del tipo si se omite */}
+      {/* Título personalizado — opcional */}
       <div className="mb-4">
         <label className={labelClass}>Título personalizado <span className="text-[#555] normal-case font-normal">(opcional)</span></label>
         <Input
@@ -221,18 +243,15 @@ export function ScheduleForm({ classTypes, instructors = [] }: ScheduleFormProps
       <div className="grid grid-cols-3 gap-3 mb-4">
         <div>
           <label className={labelClass}>Fecha <span className="text-[#FF5E14]">*</span></label>
-          {/* starts_at se construye combinando fecha + hora */}
           <input
             type="date"
             id="class_date"
-            // color-scheme: dark hace visibles los íconos nativos del picker en modo oscuro
             style={{ colorScheme: "dark" }}
             className="w-full h-9 bg-[#161616] border border-[#2a2a2a] rounded-md px-3 text-sm text-white focus:border-[#FF5E14] focus:outline-none"
             onChange={(e) => {
               const timeInput = document.getElementById("class_time") as HTMLInputElement;
               const time = timeInput?.value ?? "09:00";
               if (e.target.value && time) {
-                // Interpretar la hora ingresada como hora local del gym (America/Costa_Rica)
                 const utcIso = localToUtcISO(`${e.target.value}T${time}:00`);
                 setValue("starts_at", utcIso);
                 applyDuration(durationMinutes, utcIso);
@@ -245,7 +264,6 @@ export function ScheduleForm({ classTypes, instructors = [] }: ScheduleFormProps
           <input
             type="time"
             id="class_time"
-            // color-scheme: dark hace visibles los íconos nativos del picker en modo oscuro
             style={{ colorScheme: "dark" }}
             className="w-full h-9 bg-[#161616] border border-[#2a2a2a] rounded-md px-3 text-sm text-white focus:border-[#FF5E14] focus:outline-none"
             defaultValue="09:00"
@@ -253,7 +271,6 @@ export function ScheduleForm({ classTypes, instructors = [] }: ScheduleFormProps
               const dateInput = document.getElementById("class_date") as HTMLInputElement;
               const date = dateInput?.value;
               if (date && e.target.value) {
-                // Interpretar la hora ingresada como hora local del gym (America/Costa_Rica)
                 const utcIso = localToUtcISO(`${date}T${e.target.value}:00`);
                 setValue("starts_at", utcIso);
                 applyDuration(durationMinutes, utcIso);
@@ -267,7 +284,6 @@ export function ScheduleForm({ classTypes, instructors = [] }: ScheduleFormProps
           <label className={labelClass}>Duración</label>
           <Select value={String(durationMinutes)} onValueChange={handleDurationChange}>
             <SelectTrigger className={inputClass}>
-              {/* Muestra el label legible — evita que Base UI muestre el número raw */}
               <span>{DURATION_OPTIONS.find((o) => o.minutes === durationMinutes)?.label ?? `${durationMinutes} min`}</span>
             </SelectTrigger>
             <SelectContent>
@@ -284,32 +300,16 @@ export function ScheduleForm({ classTypes, instructors = [] }: ScheduleFormProps
       {/* ── Sección: Capacidad ── */}
       <div className={sectionClass}>Capacidad</div>
 
-      <div className="grid grid-cols-2 gap-3 mb-4">
-        <div>
-          <label className={labelClass}>Cupos máximos <span className="text-[#FF5E14]">*</span></label>
-          <Input
-            type="number"
-            min={1}
-            max={200}
-            placeholder="Sin límite"
-            className={inputClass}
-            {...register("max_capacity", { valueAsNumber: true })}
-          />
-        </div>
-        <div>
-          <label className={labelClass}>Lista de espera</label>
-          <Select onValueChange={() => {}}>
-            <SelectTrigger className={inputClass}>
-              <SelectValue placeholder="Sin lista de espera" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">Sin lista de espera</SelectItem>
-              <SelectItem value="5">Hasta 5 personas</SelectItem>
-              <SelectItem value="10">Hasta 10 personas</SelectItem>
-              <SelectItem value="unlimited">Sin límite</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+      <div className="mb-4">
+        <label className={labelClass}>Cupos máximos <span className="text-[#FF5E14]">*</span></label>
+        <Input
+          type="number"
+          min={1}
+          max={200}
+          placeholder="Sin límite"
+          className={inputClass}
+          {...register("max_capacity", { valueAsNumber: true })}
+        />
       </div>
 
       {/* ── Sección: Recurrencia ── */}
@@ -318,13 +318,12 @@ export function ScheduleForm({ classTypes, instructors = [] }: ScheduleFormProps
       {/* Toggle clase recurrente */}
       <div
         className="flex items-center justify-between px-3 py-2.5 bg-[#161616] border border-[#2a2a2a] rounded-lg cursor-pointer mb-3 hover:border-[#333] transition-colors"
-        onClick={() => setIsRecurring(!isRecurring)}
+        onClick={handleToggleRecurring}
       >
         <div>
           <p className="text-sm font-medium text-[#ccc]">Clase recurrente</p>
           <p className="text-[10px] text-[#555] mt-0.5">Repetir en días y horas específicas</p>
         </div>
-        {/* Switch visual */}
         <div className={cn(
           "w-9 h-5 rounded-full relative transition-colors",
           isRecurring ? "bg-[#FF5E14]" : "bg-[#2a2a2a]"
@@ -336,7 +335,7 @@ export function ScheduleForm({ classTypes, instructors = [] }: ScheduleFormProps
         </div>
       </div>
 
-      {/* Opciones de recurrencia — aparece solo cuando está activado */}
+      {/* Opciones de recurrencia */}
       {isRecurring && (
         <div className="space-y-3 mb-4 pl-1">
           {/* Chips de patrón */}
@@ -345,7 +344,7 @@ export function ScheduleForm({ classTypes, instructors = [] }: ScheduleFormProps
               <button
                 key={value}
                 type="button"
-                onClick={() => setRecurrencePattern(value)}
+                onClick={() => handlePatternChange(value)}
                 className={cn(
                   "px-3 py-1.5 rounded-full text-xs font-medium border transition-all",
                   recurrencePattern === value
@@ -360,35 +359,52 @@ export function ScheduleForm({ classTypes, instructors = [] }: ScheduleFormProps
 
           {/* Días personalizados — solo cuando pattern === 'custom' */}
           {recurrencePattern === "custom" && (
-            <div className="flex gap-1.5">
-              {WEEK_DAYS.map(({ label, iso }) => (
-                <button
-                  key={iso}
-                  type="button"
-                  onClick={() => toggleDay(iso)}
-                  className={cn(
-                    "w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium border transition-all",
-                    selectedDays.includes(iso)
-                      ? "bg-[#FF5E14] border-[#FF5E14] text-white"
-                      : "border-[#333] text-[#555] hover:border-[#555]"
-                  )}
-                >
-                  {label}
-                </button>
-              ))}
+            <div>
+              <p className={labelClass}>Días de la semana</p>
+              <div className="flex gap-1.5">
+                {WEEK_DAYS.map(({ label, iso }) => (
+                  <button
+                    key={iso}
+                    type="button"
+                    onClick={() => toggleDay(iso)}
+                    className={cn(
+                      "w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium border transition-all",
+                      selectedDays.includes(iso)
+                        ? "bg-[#FF5E14] border-[#FF5E14] text-white"
+                        : "border-[#333] text-[#555] hover:border-[#555]"
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {selectedDays.length === 0 && (
+                <p className="text-xs text-[#EF4444] mt-1">Selecciona al menos un día</p>
+              )}
             </div>
           )}
 
-          {/* Fecha de fin de recurrencia */}
+          {/* Campo: cuántas semanas hacia adelante */}
           <div>
-            <label className={labelClass}>Repetir hasta</label>
-            <input
-              type="date"
-              style={{ colorScheme: "dark" }}
-              className="w-full h-9 bg-[#161616] border border-[#2a2a2a] rounded-md px-3 text-sm text-white focus:border-[#FF5E14] focus:outline-none"
+            <label className={labelClass}>Semanas hacia adelante <span className="text-[#FF5E14]">*</span></label>
+            <Input
+              type="number"
+              min={1}
+              max={52}
+              placeholder="12"
+              className={cn(inputClass, "w-32")}
+              {...register("recurrence_weeks", { valueAsNumber: true })}
             />
+            {errors.recurrence_weeks && (
+              <p className="text-xs text-destructive mt-1">{errors.recurrence_weeks.message}</p>
+            )}
           </div>
         </div>
+      )}
+
+      <Input type="hidden" {...register("is_recurring")} />
+      {isRecurring && (
+        <Input type="hidden" {...register("recurrence_rule")} value={recurrencePattern} />
       )}
 
       <Button
@@ -397,7 +413,7 @@ export function ScheduleForm({ classTypes, instructors = [] }: ScheduleFormProps
         className="gap-2 w-full bg-[#FF5E14] hover:bg-[#e5540f] text-white mt-2"
       >
         {isSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
-        Programar clase
+        {isRecurring ? "Programar serie de clases" : "Programar clase"}
       </Button>
     </form>
   );

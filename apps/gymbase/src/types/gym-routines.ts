@@ -35,6 +35,8 @@ export interface Routine {
   is_member_created: boolean;
   // is_public: si true, otros miembros y el admin pueden ver la rutina del miembro
   is_public: boolean;
+  // is_default: si true, se asigna automáticamente a nuevos miembros al activar su suscripción
+  is_default: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -148,4 +150,24 @@ export interface PRResult {
 
 export interface RoutineWithDays extends Routine {
   days: (RoutineDay & { exercises: RoutineExercise[] })[];
+}
+
+// Test de repetición máxima — registro manual, completamente independiente de rutinas y PRs de sesión
+export interface OneRepMaxTest {
+  id: string;
+  user_id: string;
+  org_id: string;
+  exercise_id: string;
+  weight_kg: number;
+  notes: string | null;
+  tested_at: string;
+  exercise?: { name: string; muscle_group: string | null };
+}
+
+// Punto de progresión de peso para gráficas de ejercicios (extraído de workout_logs)
+export interface ExerciseProgressPoint {
+  date: string;       // "dd/mm" para el eje X
+  full_date: string;  // ISO completo para ordenamiento
+  max_weight: number; // peso máximo levantado en esa sesión
+  sets_count: number; // cantidad de series completadas con peso registrado
 }

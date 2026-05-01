@@ -1,6 +1,6 @@
 // page.tsx — Calendario de clases disponibles y reservas del miembro
 
-import { getWeekSchedule, getMyBookings } from "@/actions/calendar.actions";
+import { getWeekSchedule, getMyBookings, getClassTypes } from "@/actions/calendar.actions";
 import { PortalCalendarView } from "@/components/gym/calendar/PortalCalendarView";
 import { BookingList } from "@/components/gym/calendar/BookingList";
 import { themeConfig } from "@/lib/theme";
@@ -18,9 +18,10 @@ export default async function PortalCalendarPage(): Promise<React.ReactNode> {
   sunday.setDate(monday.getDate() + 6);
   sunday.setHours(23, 59, 59, 999);
 
-  const [weekClasses, myBookings] = await Promise.all([
+  const [weekClasses, myBookings, classTypes] = await Promise.all([
     getWeekSchedule(monday.toISOString(), sunday.toISOString()),
     getMyBookings(),
+    getClassTypes(),
   ]);
 
   const monthLabel = now.toLocaleDateString("es-CR", { month: "long", year: "numeric" });
@@ -43,6 +44,7 @@ export default async function PortalCalendarPage(): Promise<React.ReactNode> {
           <PortalCalendarView
             classes={weekClasses}
             myBookings={myBookings}
+            classTypes={classTypes}
             weekStart={monday}
           />
         </div>

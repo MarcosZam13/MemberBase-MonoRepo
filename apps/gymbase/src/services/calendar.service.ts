@@ -1,7 +1,7 @@
 // calendar.service.ts — Queries de base de datos para calendario de clases y reservas
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { ClassType, ScheduledClass, ClassBooking } from "@/types/gym-calendar";
+import type { ClassType, ScheduledClass, ClassBooking, BookingStatus } from "@/types/gym-calendar";
 
 export async function fetchClassTypes(supabase: SupabaseClient, orgId: string): Promise<ClassType[]> {
   const { data, error } = await supabase
@@ -38,6 +38,7 @@ export async function fetchScheduledClasses(
     .select(`
       id, org_id, type_id, instructor_id, title, starts_at, ends_at,
       max_capacity, location, description, is_cancelled, created_at,
+      recurrence_group_id, recurrence_rule, recurrence_weeks,
       class_type:gym_class_types(id, org_id, name, color, icon, description)
     `)
     .eq("org_id", orgId)
@@ -54,7 +55,7 @@ export async function insertScheduledClass(
   instructorId: string,
   data: {
     type_id: string;
-    title: string;
+    title?: string | null;
     starts_at: string;
     ends_at: string;
     max_capacity?: number | null;
@@ -65,7 +66,7 @@ export async function insertScheduledClass(
   const { data: result, error } = await supabase
     .from("gym_scheduled_classes")
     .insert({ org_id: orgId, instructor_id: instructorId, ...data })
-    .select("id, org_id, type_id, instructor_id, title, starts_at, ends_at, max_capacity, location, description, is_cancelled, created_at")
+    .select("id, org_id, type_id, instructor_id, title, starts_at, ends_at, max_capacity, location, description, is_cancelled, created_at, recurrence_group_id, recurrence_rule, recurrence_weeks")
     .single();
   if (error) throw new Error(error.message);
   return result as ScheduledClass;
@@ -79,25 +80,16 @@ export async function cancelScheduledClass(supabase: SupabaseClient, classId: st
   if (error) throw new Error(error.message);
 }
 
-export async function fetchBookingsForClass(supabase: SupabaseClient, classId: string): Promise<number> {
-  const { count, error } = await supabase
-    .from("gym_class_bookings")
-    .select("id", { count: "exact", head: true })
-    .eq("class_id", classId)
-    .eq("status", "confirmed");
-  if (error) throw new Error(error.message);
-  return count ?? 0;
-}
-
 export async function fetchMyBookings(supabase: SupabaseClient, userId: string): Promise<ClassBooking[]> {
+  // Incluye reservas confirmadas y en waitlist para mostrárselas al miembro
   const { data, error } = await supabase
     .from("gym_class_bookings")
     .select(`
       id, user_id, org_id, class_id, status, booked_at,
-      scheduled_class:gym_scheduled_classes(id, org_id, type_id, instructor_id, title, starts_at, ends_at, max_capacity, location, description, is_cancelled, created_at)
+      scheduled_class:gym_scheduled_classes(id, org_id, type_id, instructor_id, title, starts_at, ends_at, max_capacity, location, description, is_cancelled, created_at, recurrence_group_id, recurrence_rule, recurrence_weeks)
     `)
     .eq("user_id", userId)
-    .eq("status", "confirmed")
+    .in("status", ["confirmed", "waitlist"])
     .order("booked_at", { ascending: false });
   if (error) throw new Error(error.message);
   return (data ?? []) as unknown as ClassBooking[];
@@ -107,11 +99,12 @@ export async function insertBooking(
   supabase: SupabaseClient,
   userId: string,
   orgId: string,
-  classId: string
+  classId: string,
+  status: BookingStatus = "confirmed"
 ): Promise<ClassBooking> {
   const { data, error } = await supabase
     .from("gym_class_bookings")
-    .insert({ user_id: userId, org_id: orgId, class_id: classId, status: "confirmed" })
+    .insert({ user_id: userId, org_id: orgId, class_id: classId, status })
     .select("id, user_id, org_id, class_id, status, booked_at")
     .single();
   if (error) throw new Error(error.message);

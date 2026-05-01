@@ -1,5 +1,6 @@
 // database.ts — Re-exporta tipos de core + tipos exclusivos de GymBase
 export type {
+  UserRole,
   Profile,
   MembershipPlan,
   Subscription,
@@ -11,6 +12,8 @@ export type {
   ContentCategory,
   CommunityPost,
   CommunityComment,
+  CommunityReaction,
+  ReactionType,
   ActionResult,
   AdminDashboardStats,
   MemberWithSubscription,

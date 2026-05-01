@@ -12,6 +12,7 @@ import {
   TrendingUp,
   BookOpen,
   Users,
+  ShoppingBag,
   LogOut,
   UserCircle,
   Zap,
@@ -27,6 +28,8 @@ interface GymPortalNavProps {
   profile: Profile | null;
   // Cuando la membresía no está activa, solo se muestra el link de membresía
   isActive?: boolean;
+  // Nombre del gym desde la DB — sobreescribe themeConfig.brand.name si se provee
+  gymName?: string;
 }
 
 interface NavItem {
@@ -44,9 +47,10 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/portal/challenges", label: "Retos",     icon: Trophy,       flag: "gym_challenges" },
   { href: "/portal/progress",  label: "Progreso",  icon: TrendingUp,   flag: "gym_health_metrics" },
   { href: "/portal/community",  label: "Comunidad", icon: Users,        flag: "community" },
+  { href: "/portal/store",      label: "Tienda",    icon: ShoppingBag,  flag: "gym_marketplace" },
 ];
 
-export function GymPortalNav({ profile, isActive = true }: GymPortalNavProps): React.ReactNode {
+export function GymPortalNav({ profile, isActive = true, gymName }: GymPortalNavProps): React.ReactNode {
   const pathname = usePathname();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -97,7 +101,7 @@ export function GymPortalNav({ profile, isActive = true }: GymPortalNavProps): R
             className="text-sm font-bold hidden sm:block"
             style={{ color: "var(--gym-text-primary)", fontFamily: "var(--font-barlow)" }}
           >
-            {themeConfig.brand.name}
+            {gymName ?? themeConfig.brand.name}
           </span>
         </Link>
 

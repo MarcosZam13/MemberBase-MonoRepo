@@ -34,7 +34,7 @@ export async function getCategories(onlyActive = false): Promise<ContentCategory
 // Crea una nueva categoría (solo admin)
 export async function createCategoryAction(formData: unknown): Promise<ActionResult<string>> {
   const user = await getCurrentUser();
-  if (!user || user.role !== "admin") return { success: false, error: "Sin permisos" };
+  if (!user || user.role !== "admin" && user.role !== "owner") return { success: false, error: "Sin permisos" };
 
   const parsed = categorySchema.safeParse(formData);
   if (!parsed.success) return { success: false, error: parsed.error.flatten().fieldErrors as Record<string, string[]> };
@@ -57,7 +57,7 @@ export async function createCategoryAction(formData: unknown): Promise<ActionRes
 // Actualiza una categoría existente (solo admin)
 export async function updateCategoryAction(id: string, formData: unknown): Promise<ActionResult> {
   const user = await getCurrentUser();
-  if (!user || user.role !== "admin") return { success: false, error: "Sin permisos" };
+  if (!user || user.role !== "admin" && user.role !== "owner") return { success: false, error: "Sin permisos" };
 
   const parsed = categorySchema.partial().safeParse(formData);
   if (!parsed.success) return { success: false, error: parsed.error.flatten().fieldErrors as Record<string, string[]> };

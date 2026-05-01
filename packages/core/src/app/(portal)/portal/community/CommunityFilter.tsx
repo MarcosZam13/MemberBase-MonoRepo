@@ -7,8 +7,8 @@ import { TagFilterBar, type FilterTag } from "@/components/shared/TagFilterBar";
 
 // Filtros disponibles en la comunidad
 const COMMUNITY_TAGS: FilterTag[] = [
-  { id: "pinned",  label: "Fijados",   color: "#F97316" },
-  { id: "recent",  label: "Recientes", color: "#2563EB" },
+  { id: "pinned",  label: "Fijados",   color: "#FF5E14" },
+  { id: "recent",  label: "Esta semana", color: "#22C55E" },
 ];
 
 interface CommunityFilterProps {

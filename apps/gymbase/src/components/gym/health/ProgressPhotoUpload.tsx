@@ -80,7 +80,7 @@ export function ProgressPhotoUpload({ memberId }: ProgressPhotoUploadProps): Rea
           style={{ backgroundColor: "rgba(0,0,0,0.8)", backdropFilter: "blur(4px)" }}
           onClick={(e) => { if (e.target === e.currentTarget) handleClose(); }}
         >
-          <div className="bg-[#111] border border-[#1a1a1a] rounded-[16px] p-5 w-full max-w-sm space-y-4">
+          <div className="bg-[#111] border border-[#1a1a1a] rounded-[16px] p-5 w-full max-w-sm space-y-4 max-h-[85vh] overflow-y-auto">
 
             {/* Header */}
             <div className="flex items-center justify-between">
@@ -118,7 +118,7 @@ export function ProgressPhotoUpload({ memberId }: ProgressPhotoUploadProps): Rea
 
             {/* Área de preview / selección de archivo */}
             <div
-              className="relative aspect-[3/4] rounded-[10px] overflow-hidden flex items-center justify-center cursor-pointer"
+              className="relative h-44 rounded-[10px] overflow-hidden flex items-center justify-center cursor-pointer"
               style={{ backgroundColor: "#0d0d0d", border: "1px dashed #2a2a2a" }}
               onClick={() => fileRef.current?.click()}
             >

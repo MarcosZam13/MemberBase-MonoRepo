@@ -6,6 +6,7 @@ import { getSalesReport } from "@/actions/owner.actions";
 import { getProducts } from "@/actions/inventory.actions";
 import { SalesReportTable } from "@/components/owner/SalesReportTable";
 import { PeriodSelector } from "@/components/owner/PeriodSelector";
+import { ExportCSVButton } from "@/components/owner/ExportCSVButton";
 import { themeConfig } from "@/lib/theme";
 import type { OwnerPeriod } from "@core/types/owner";
 
@@ -46,6 +47,16 @@ export default async function OwnerInventoryPage({
   const avgMargin =
     totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
 
+  const csvRows = sales.map((s) => ({
+    "Producto": s.product_name,
+    "Categoría": s.category,
+    "Unidades vendidas": s.units_sold,
+    "Ingresos (CRC)": s.revenue,
+    "Costo (CRC)": s.cost,
+    "Ganancia (CRC)": s.profit,
+    "Margen %": `${s.profit_margin_pct.toFixed(1)}%`,
+  }));
+
   return (
     <div className="p-8 max-w-7xl mx-auto">
       {/* Header */}
@@ -56,9 +67,12 @@ export default async function OwnerInventoryPage({
           </h1>
           <p className="text-[#737373] text-sm mt-1">Reporte de ventas y alertas de stock</p>
         </div>
-        <Suspense>
-          <PeriodSelector current={period} />
-        </Suspense>
+        <div className="flex items-center gap-3">
+          <ExportCSVButton filename={`inventario-${period}.csv`} rows={csvRows} />
+          <Suspense>
+            <PeriodSelector current={period} />
+          </Suspense>
+        </div>
       </div>
 
       {/* KPIs */}

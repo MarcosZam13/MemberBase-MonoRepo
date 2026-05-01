@@ -10,10 +10,12 @@ import {
 } from "lucide-react";
 import { getMemberById } from "@core/actions/admin.actions";
 import { formatDate, formatPrice } from "@/lib/utils";
+import { fromOpaqueId, toOpaqueId } from "@/lib/utils/opaque-id";
 import { getHealthProfile, getHealthHistory, getProgressPhotos } from "@/actions/health.actions";
 import { getRoutines, getMemberActiveRoutine, getMemberRoutineStack, getRoutineById } from "@/actions/routine.actions";
 import { getMemberPRsAdmin } from "@/actions/workout.actions";
-import { getMemberAttendanceLogs } from "@/actions/checkin.actions";
+import { getMemberAttendanceLogs, getMemberAttendanceLogsPaginated } from "@/actions/checkin.actions";
+import { AttendancePaginatedTable } from "@/components/gym/members/AttendancePaginatedTable";
 import { HealthMetricsForm } from "@/components/gym/health/HealthMetricsForm";
 import { SnapshotForm } from "@/components/gym/health/SnapshotForm";
 import { HealthChartCard } from "@/components/gym/health/HealthChartCard";
@@ -66,7 +68,9 @@ interface MemberDetailPageProps {
 }
 
 export default async function MemberDetailPage({ params, searchParams }: MemberDetailPageProps): Promise<React.ReactNode> {
-  const { id } = await params;
+  const { id: rawId } = await params;
+  const id = fromOpaqueId(rawId);
+  const opaqueId = toOpaqueId(id);
   const { tab = "info" } = await searchParams;
 
   const member = await getMemberById(id);
@@ -92,18 +96,19 @@ export default async function MemberDetailPage({ params, searchParams }: MemberD
   const statusCfg = STATUS_CONFIG[status];
 
   // Cargar todos los datos en paralelo según módulos activos y pestaña
-  const [healthProfile, healthSnapshots, routines, memberRoutineStack, memberActiveRoutine, memberLogs, memberPayments, membershipPlans, progressPhotos, memberPRs] =
+  const [healthProfile, healthSnapshots, routines, memberRoutineStack, memberActiveRoutine, memberLogs, memberPayments, membershipPlans, progressPhotos, memberPRs, attendanceFirstPage] =
     await Promise.all([
       themeConfig.features.gym_health_metrics ? getHealthProfile(id) : Promise.resolve(null),
       themeConfig.features.gym_health_metrics ? getHealthHistory(id, 50) : Promise.resolve([]),
       themeConfig.features.gym_routines ? getRoutines() : Promise.resolve([]),
       themeConfig.features.gym_routines ? getMemberRoutineStack(id) : Promise.resolve({ active: [], history: [] }),
       themeConfig.features.gym_routines ? getMemberActiveRoutine(id) : Promise.resolve(null),
-      getMemberAttendanceLogs(id),
+      getMemberAttendanceLogs(id),   // logs completos para heatmap y stats
       getMemberPayments(id),
       getPlans(true),
       themeConfig.features.gym_progress ? getProgressPhotos(id) : Promise.resolve([]),
       themeConfig.features.gym_routines ? getMemberPRsAdmin(id) : Promise.resolve([]),
+      getMemberAttendanceLogsPaginated(id, 1, 20), // primera página para la tabla
     ]);
 
   // Cargar detalle completo de la rutina destacada — query serial porque depende de memberActiveRoutine
@@ -318,12 +323,17 @@ export default async function MemberDetailPage({ params, searchParams }: MemberD
       <div
         className="flex items-start gap-4 p-4 bg-[#111] border border-[#1e1e1e] rounded-[14px]"
       >
-        {/* Avatar grande */}
+        {/* Avatar grande — foto real si existe, iniciales de hash como fallback */}
         <div
-          className="w-14 h-14 rounded-full flex items-center justify-center text-xl font-bold font-barlow flex-shrink-0"
-          style={{ background: colors.bg, color: colors.text, border: `1.5px solid ${colors.border}` }}
+          className="w-14 h-14 rounded-full flex-shrink-0 overflow-hidden flex items-center justify-center text-xl font-bold font-barlow"
+          style={member.avatar_url ? {} : { background: colors.bg, color: colors.text, border: `1.5px solid ${colors.border}` }}
         >
-          {initials(member.full_name)}
+          {member.avatar_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={member.avatar_url} alt={member.full_name ?? "Avatar"} className="w-full h-full object-cover" />
+          ) : (
+            initials(member.full_name)
+          )}
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-lg font-bold text-white tracking-tight">{member.full_name ?? "Sin nombre"}</p>
@@ -368,7 +378,7 @@ export default async function MemberDetailPage({ params, searchParams }: MemberD
         {TABS.map(({ key, label }) => (
           <Link
             key={key}
-            href={`/admin/members/${id}?tab=${key}`}
+            href={`/admin/members/${opaqueId}?tab=${key}`}
             className={`flex-1 h-8 rounded-[8px] flex items-center justify-center text-[11px] font-medium transition-colors ${
               tab === key
                 ? "bg-[#1e1e1e] text-white"
@@ -472,7 +482,7 @@ export default async function MemberDetailPage({ params, searchParams }: MemberD
 
               <div className="mt-2 pt-2 border-t border-[#161616]">
                 <Link
-                  href={`/admin/members/${id}?tab=attendance`}
+                  href={`/admin/members/${opaqueId}?tab=attendance`}
                   className="text-[11px] text-[#555] hover:text-[#FF5E14] transition-colors"
                 >
                   Ver todas →
@@ -507,7 +517,7 @@ export default async function MemberDetailPage({ params, searchParams }: MemberD
                       </div>
                     </div>
                     <Link
-                      href={`/admin/routines/${memberActiveRoutine.routine_id}`}
+                      href={`/admin/routines/${toOpaqueId(memberActiveRoutine.routine_id)}`}
                       className="flex items-center justify-center h-7 w-full text-[11px] font-medium bg-[#1a1a1a] border border-[#2a2a2a] text-[#888] rounded-lg hover:text-white transition-colors"
                     >
                       Ver rutina →
@@ -517,7 +527,7 @@ export default async function MemberDetailPage({ params, searchParams }: MemberD
                   <div className="space-y-2">
                     <p className="text-[12px] text-[#555]">Sin rutina asignada</p>
                     <Link
-                      href={`/admin/members/${id}?tab=routine`}
+                      href={`/admin/members/${opaqueId}?tab=routine`}
                       className="flex items-center justify-center h-7 w-full text-[11px] font-medium bg-[#1a1a1a] border border-[#2a2a2a] text-[#888] rounded-lg hover:text-white transition-colors"
                     >
                       Asignar rutina →
@@ -568,7 +578,7 @@ export default async function MemberDetailPage({ params, searchParams }: MemberD
                     style={{ backgroundColor: "#FF5E1420", color: "#FF5E14", border: "1px solid #FF5E1440" }}
                   >
                     <Shield className="w-3 h-3" />
-                    {member.role === "admin" ? "Administrador" : "Miembro"}
+                    {member.role === "owner" ? "Owner" : member.role === "admin" ? "Administrador" : "Miembro"}
                   </span>
                 </div>
               </div>
@@ -578,6 +588,7 @@ export default async function MemberDetailPage({ params, searchParams }: MemberD
                   memberId={member.id}
                   initialName={member.full_name ?? null}
                   initialPhone={member.phone ?? null}
+                  initialAvatarUrl={member.avatar_url ?? null}
                 />
               </div>
             </div>
@@ -753,52 +764,12 @@ export default async function MemberDetailPage({ params, searchParams }: MemberD
             })()}
           </div>
 
-          {/* Sección 4 — Tabla de logs recientes (últimos 15) */}
-          <div className="bg-[#111] border border-[#1a1a1a] rounded-[14px] overflow-hidden">
-            <div className="px-4 py-3 border-b border-[#1a1a1a] flex items-center justify-between">
-              <p className="text-[10px] font-semibold text-[#FF5E14] uppercase tracking-[0.08em]">
-                Registros recientes
-              </p>
-              <span className="text-[10px] text-[#444]">{memberLogs.length} total</span>
-            </div>
-            <div className="divide-y divide-[#0d0d0d]">
-              {memberLogs.length === 0 ? (
-                <p className="text-center text-[#444] text-[12px] py-8">Sin asistencias registradas</p>
-              ) : (
-                memberLogs.slice(0, 15).map((log) => (
-                  <div key={log.id} className="px-4 py-3 flex items-center justify-between hover:bg-[#0f0f0f]">
-                    <div className="flex items-center gap-3">
-                      <div className="w-1.5 h-1.5 rounded-full bg-[#FF5E14] shrink-0" />
-                      <div>
-                        <p className="text-[12px] font-medium text-[#ccc] capitalize">
-                          {new Date(log.check_in_at).toLocaleDateString("es-CR", {
-                            weekday: "short", day: "numeric", month: "short",
-                          })}
-                        </p>
-                        <p className="text-[10px] text-[#555]">
-                          {new Date(log.check_in_at).toLocaleTimeString("es-CR", {
-                            hour: "2-digit", minute: "2-digit",
-                          })}
-                          {log.check_out_at &&
-                            ` → ${new Date(log.check_out_at).toLocaleTimeString("es-CR", {
-                              hour: "2-digit", minute: "2-digit",
-                            })}`
-                          }
-                        </p>
-                      </div>
-                    </div>
-                    {log.duration_minutes ? (
-                      <span className="text-[11px] font-semibold font-barlow text-[#FF5E14]">
-                        {log.duration_minutes} min
-                      </span>
-                    ) : (
-                      <span className="text-[10px] text-[#444]">En curso</span>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
+          {/* Sección 4 — Tabla paginada de logs de asistencia (pageSize=20, paginación local) */}
+          <AttendancePaginatedTable
+            memberId={id}
+            initialData={attendanceFirstPage.data}
+            initialTotal={attendanceFirstPage.total}
+          />
 
         </div>
       )}
@@ -1145,7 +1116,7 @@ export default async function MemberDetailPage({ params, searchParams }: MemberD
                   {/* Link a rutina completa + fecha de asignación */}
                   <div className="mt-3 pt-3 border-t border-[#1a1a1a] flex items-center gap-3">
                     <Link
-                      href={`/admin/routines/${memberActiveRoutine.routine_id}`}
+                      href={`/admin/routines/${toOpaqueId(memberActiveRoutine.routine_id)}`}
                       className="text-[11px] text-[#FF5E14] hover:underline"
                     >
                       Ver rutina completa →

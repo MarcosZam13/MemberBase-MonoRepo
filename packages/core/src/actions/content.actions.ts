@@ -21,6 +21,8 @@ export async function getContentForUser(): Promise<Content[]> {
     .select(`
       id, title, description, type, body, media_url, thumbnail_url,
       is_published, sort_order, created_by, created_at, updated_at,
+      category_id,
+      category:content_categories(id, name, slug, color),
       plans:content_plans(plan_id)
     `)
     .order("sort_order", { ascending: true });
@@ -36,7 +38,7 @@ export async function getContentForUser(): Promise<Content[]> {
 // Obtiene todo el contenido para el panel admin (publicado y borrador)
 export async function getAllContent(): Promise<Content[]> {
   const user = await getCurrentUser();
-  if (!user || user.role !== "admin") return [];
+  if (!user || user.role !== "admin" && user.role !== "owner") return [];
 
   const supabase = await createClient();
   const { data, error } = await supabase
@@ -78,7 +80,7 @@ export async function getContentById(id: string): Promise<Content | null> {
 export async function createContent(formData: unknown): Promise<ActionResult<Content>> {
   const user = await getCurrentUser();
   if (!user) return { success: false, error: "No autenticado" };
-  if (user.role !== "admin") return { success: false, error: "Sin permisos" };
+  if (user.role !== "admin" && user.role !== "owner") return { success: false, error: "Sin permisos" };
 
   const parsed = createContentSchema.safeParse(formData);
   if (!parsed.success) {
@@ -135,7 +137,7 @@ export async function createContent(formData: unknown): Promise<ActionResult<Con
 export async function updateContent(formData: unknown): Promise<ActionResult> {
   const user = await getCurrentUser();
   if (!user) return { success: false, error: "No autenticado" };
-  if (user.role !== "admin") return { success: false, error: "Sin permisos" };
+  if (user.role !== "admin" && user.role !== "owner") return { success: false, error: "Sin permisos" };
 
   const parsed = updateContentSchema.safeParse(formData);
   if (!parsed.success) {
@@ -178,7 +180,7 @@ export async function updateContent(formData: unknown): Promise<ActionResult> {
 export async function deleteContent(contentId: string): Promise<ActionResult> {
   const user = await getCurrentUser();
   if (!user) return { success: false, error: "No autenticado" };
-  if (user.role !== "admin") return { success: false, error: "Sin permisos" };
+  if (user.role !== "admin" && user.role !== "owner") return { success: false, error: "Sin permisos" };
 
   const supabase = await createClient();
 
@@ -200,7 +202,7 @@ export async function deleteContent(contentId: string): Promise<ActionResult> {
 export async function togglePublished(contentId: string, isPublished: boolean): Promise<ActionResult> {
   const user = await getCurrentUser();
   if (!user) return { success: false, error: "No autenticado" };
-  if (user.role !== "admin") return { success: false, error: "Sin permisos" };
+  if (user.role !== "admin" && user.role !== "owner") return { success: false, error: "Sin permisos" };
 
   const supabase = await createClient();
   const { error } = await supabase

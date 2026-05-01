@@ -13,7 +13,7 @@ interface AdminRankingSidebarProps {
 // Colores de posición del podio
 const POSITION_COLORS = ["#FACC15", "#9CA3AF", "#CD7C2F"];
 
-function getInitials(name?: string): string {
+function getInitials(name?: string | null): string {
   if (!name) return "?";
   return name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
 }

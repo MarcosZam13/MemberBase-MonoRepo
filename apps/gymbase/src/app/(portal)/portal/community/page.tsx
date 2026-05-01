@@ -1,14 +1,11 @@
-// page.tsx — Feed de posts de la comunidad con filtros
+// page.tsx — Feed de posts de la comunidad con filtros y "Cargar más" client-side
 
 import { Suspense } from "react";
-import Link from "next/link";
-import { MessageSquare, PlusCircle } from "lucide-react";
-import { Button } from "@core/components/ui/button";
-import { PostCard } from "@core/components/shared/PostCard";
+import { MessageSquare } from "lucide-react";
 import { getPosts } from "@core/actions/community.actions";
-import { getUserSubscription } from "@core/actions/payment.actions";
-import { formatDate } from "@/lib/utils";
+import { getCurrentUser } from "@/lib/supabase/server";
 import { CommunityFilter } from "@core/app/(portal)/portal/community/CommunityFilter";
+import { CommunityFeedClient } from "@/components/gym/community/CommunityFeedClient";
 
 interface CommunityPageProps {
   searchParams: Promise<{ filter?: string }>;
@@ -17,12 +14,10 @@ interface CommunityPageProps {
 export default async function CommunityPage({ searchParams }: CommunityPageProps): Promise<React.ReactNode> {
   const { filter } = await searchParams;
 
-  const [posts, subscription] = await Promise.all([
+  const [posts, user] = await Promise.all([
     getPosts(),
-    getUserSubscription(),
+    getCurrentUser(),
   ]);
-
-  const hasActiveSubscription = subscription?.status === "active";
 
   // Aplicar filtro del tag activo
   const filteredPosts = (() => {
@@ -38,57 +33,36 @@ export default async function CommunityPage({ searchParams }: CommunityPageProps
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-semibold text-foreground">Comunidad</h1>
-          <p className="text-muted-foreground">
-            {filteredPosts.length} publicación{filteredPosts.length !== 1 ? "es" : ""}
-            {filter === "pinned" && " fijada" + (filteredPosts.length !== 1 ? "s" : "")}
-            {filter === "recent" && " de los últimos 7 días"}
-          </p>
-        </div>
-        {hasActiveSubscription && (
-          <Button asChild>
-            <Link href="/portal/community/new" className="gap-2">
-              <PlusCircle className="w-4 h-4" />
-              Nuevo post
-            </Link>
-          </Button>
-        )}
+      {/* Header */}
+      <div>
+        <h1 className="text-4xl font-bold text-white font-barlow tracking-tight leading-none uppercase">
+          Comunidad
+        </h1>
+        <p className="text-[#555] text-sm mt-1">
+          {filteredPosts.length} publicación{filteredPosts.length !== 1 ? "es" : ""}
+          {filter === "pinned" && " fijada" + (filteredPosts.length !== 1 ? "s" : "")}
+          {filter === "recent" && " de los últimos 7 días"}
+        </p>
       </div>
 
+      {/* Filtros de tags — envuelto en Suspense porque usa useSearchParams */}
       <Suspense fallback={null}>
         <CommunityFilter totalCount={posts.length} pinnedCount={pinnedCount} />
       </Suspense>
 
       {filteredPosts.length === 0 ? (
-        <div className="text-center py-16 text-muted-foreground">
-          <MessageSquare className="w-12 h-12 mx-auto mb-4 opacity-40" />
-          <p className="font-medium">
+        <div className="text-center py-20">
+          <MessageSquare className="w-10 h-10 mx-auto mb-4 text-[#333]" />
+          <p className="text-[#555] font-medium text-sm">
             {filter === "pinned"
               ? "No hay posts fijados aún"
               : filter === "recent"
               ? "No hay posts nuevos en los últimos 7 días"
               : "Aún no hay publicaciones"}
           </p>
-          {!filter && (
-            <p className="text-sm mt-1">¡Sé el primero en compartir algo con la comunidad!</p>
-          )}
         </div>
       ) : (
-        <div className="space-y-3">
-          {filteredPosts.map((post) => (
-            <PostCard
-              key={post.id}
-              id={post.id}
-              title={post.title}
-              author={post.author?.full_name ?? "Miembro"}
-              date={formatDate(post.created_at)}
-              commentCount={post.comment_count ?? 0}
-              isPinned={post.is_pinned}
-            />
-          ))}
-        </div>
+        <CommunityFeedClient posts={filteredPosts} currentUserId={user?.id ?? null} />
       )}
     </div>
   );

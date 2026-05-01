@@ -5,6 +5,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { getYouTubeEmbedUrl } from "@/lib/utils";
 import { startWorkoutSession, completeWorkoutSession } from "@/actions/workout.actions";
+import { ExerciseProgressModal } from "@/components/gym/routines/ExerciseProgressModal";
 import type { RoutineWithDays, RoutineExercise, WorkoutExercisesDone, PRResult } from "@/types/gym-routines";
 
 /* ── Constantes ──────────────────────────────────────────────────────────────── */
@@ -91,6 +92,9 @@ export function PortalWorkoutView({ routine, onBack }: PortalWorkoutViewProps): 
 
   /* ── Estado del historial colapsable por ejercicio ── */
   const [showHistory,    setShowHistory]      = useState<Record<string, boolean>>({});
+
+  /* ── Estado para el modal de progresión de peso por ejercicio ── */
+  const [progressModal,  setProgressModal]    = useState<{ id: string; name: string; muscleGroup?: string | null } | null>(null);
 
   const activeDay    = sortedDays[activeDayIndex];
   const dayExercises = activeDay
@@ -363,9 +367,25 @@ export function PortalWorkoutView({ routine, onBack }: PortalWorkoutViewProps): 
               ← Mis rutinas
             </button>
           )}
-          <p style={{ fontFamily: "var(--font-barlow, 'Barlow Condensed', sans-serif)", fontSize: 24, fontWeight: 700, color: "#fff", letterSpacing: "-0.02em", marginBottom: 2 }}>
-            Mi Rutina
-          </p>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 2 }}>
+            <p style={{ fontFamily: "var(--font-barlow, 'Barlow Condensed', sans-serif)", fontSize: 24, fontWeight: 700, color: "#fff", letterSpacing: "-0.02em" }}>
+              Mi Rutina
+            </p>
+            <a
+              href="/portal/routines/strength"
+              title="Test de fuerza 1RM"
+              style={{
+                width: 28, height: 28, borderRadius: 7, flexShrink: 0,
+                background: "rgba(255,94,20,0.06)", border: "0.5px solid rgba(255,94,20,0.15)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                textDecoration: "none",
+              }}
+            >
+              <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+                <path d="M2 10l2.5-3.5 2.5 2 2.5-4.5 2 2" stroke="#FF5E14" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </a>
+          </div>
           <p style={{ fontSize: 11, color: "#444" }}>
             {routine.name}{routine.duration_weeks ? ` · ${routine.duration_weeks} semanas` : ""}
           </p>
@@ -493,7 +513,15 @@ export function PortalWorkoutView({ routine, onBack }: PortalWorkoutViewProps): 
                 activeMuscleIds={activeMuscIds}
                 muscleColor={muscleColor}
               />
-              <ExerciseInfoCard exercise={currentEx} muscleColor={muscleColor} />
+              <ExerciseInfoCard
+                exercise={currentEx}
+                muscleColor={muscleColor}
+                onShowProgress={() => setProgressModal({
+                  id: currentEx.exercise_id,
+                  name: currentEx.exercise?.name ?? "Ejercicio",
+                  muscleGroup: currentEx.exercise?.muscle_group,
+                })}
+              />
 
               {/* Historial colapsable de la última sesión */}
               {lastExData && lastExData.sets.length > 0 && (
@@ -562,6 +590,16 @@ export function PortalWorkoutView({ routine, onBack }: PortalWorkoutViewProps): 
           />
         )}
       </div>
+
+      {/* Modal de progresión de peso por ejercicio */}
+      {progressModal && (
+        <ExerciseProgressModal
+          exerciseId={progressModal.id}
+          exerciseName={progressModal.name}
+          muscleGroup={progressModal.muscleGroup}
+          onClose={() => setProgressModal(null)}
+        />
+      )}
 
       {/* Modal de celebración de PRs */}
       {showPRModal && (
@@ -740,9 +778,10 @@ function BodySVG({ fill, opacity }: { fill: (id: string) => string; opacity: (id
 interface ExerciseInfoCardProps {
   exercise: RoutineExercise;
   muscleColor: string;
+  onShowProgress?: () => void;
 }
 
-function ExerciseInfoCard({ exercise, muscleColor }: ExerciseInfoCardProps): React.ReactNode {
+function ExerciseInfoCard({ exercise, muscleColor, onShowProgress }: ExerciseInfoCardProps): React.ReactNode {
   const ex       = exercise.exercise;
   const diffKey  = ex?.difficulty ?? "beginner";
   const diffStyle = DIFF_STYLE[diffKey] ?? DIFF_STYLE.beginner;
@@ -753,9 +792,29 @@ function ExerciseInfoCard({ exercise, muscleColor }: ExerciseInfoCardProps): Rea
         <span style={{ color: muscleColor }}>{ex?.muscle_group ? (MUSCLE_LABEL[ex.muscle_group] ?? ex.muscle_group) : "Ejercicio"}</span>
         {ex?.equipment && <> › <span style={{ color: "#555" }}>{ex.equipment}</span></>}
       </p>
-      <p style={{ fontFamily: "var(--font-barlow, 'Barlow Condensed')", fontSize: 36, fontWeight: 900, color: "#fff", letterSpacing: "-0.03em", lineHeight: 1, marginBottom: 8 }}>
-        {ex?.name ?? "Ejercicio"}
-      </p>
+      {/* Nombre + botón de gráfica de progresión */}
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 8 }}>
+        <p style={{ fontFamily: "var(--font-barlow, 'Barlow Condensed')", fontSize: 36, fontWeight: 900, color: "#fff", letterSpacing: "-0.03em", lineHeight: 1, flex: 1 }}>
+          {ex?.name ?? "Ejercicio"}
+        </p>
+        {onShowProgress && (
+          <button
+            onClick={onShowProgress}
+            title="Ver progresión de peso"
+            style={{
+              marginTop: 4, width: 32, height: 32, borderRadius: 8, flexShrink: 0,
+              background: "#111", border: "0.5px solid #1e1e1e",
+              cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+              transition: "all 0.15s",
+            }}
+          >
+            <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+              <path d="M2 11l3-4 3 2 3-5 2 2" stroke="#FF5E14" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M2 13h11" stroke="#333" strokeWidth="1.2" strokeLinecap="round" />
+            </svg>
+          </button>
+        )}
+      </div>
       <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 14 }}>
         {exercise.rest_seconds && (
           <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: "#555" }}>
